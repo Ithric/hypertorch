@@ -1,9 +1,9 @@
 import torch 
 import pendulum as pm
 import numpy as np
-from modules import elevated
-from modules.elevated.nodelib import *
-from modules.common import pyutils
+import elevated
+from elevated.nodelib import *
+from common import pyutils
 from sklearn import datasets
 from functools import reduce, partial
 

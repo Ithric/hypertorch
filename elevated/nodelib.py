@@ -1,4 +1,4 @@
-from modules.elevated.models import ElevatedModel, SearchSpace, SearchSpacePrimitives
+from elevated.models import ElevatedModel, SearchSpace, SearchSpacePrimitives
 import torch
 from torch import nn
 
