@@ -84,7 +84,7 @@ def test( model, device, loss_model, test_x, test_y, batch_size=128):
     # / len(test_y[0])
     return avg_loss
 
-def train_model(model, train_data, validation_data, epochs, batch_size=256, use_cuda=True, keep_best=True, verbosity=1, patience=20, loss_func="xentropy"):
+def train_model(model, train_data, validation_data, epochs, batch_size=256, use_cuda=True, keep_best=True, verbosity=1, patience=20, checkpoint_hysteresis=0.001, loss_func="xentropy"):
     """
     Arguments:
         - train_data: (train_x, train_y)
@@ -135,7 +135,7 @@ def train_model(model, train_data, validation_data, epochs, batch_size=256, use_
         # compute loss
         loss = test(model, device, criterion, validation_data[0], validation_data[1])
         if verbosity > 0: print("Loss={}. Took={}s".format(loss, (pm.now() - epoch_start).total_seconds()), end="")
-        if keep_best and (best_tracker == None or loss < best_tracker[0]):
+        if keep_best and (best_tracker == None or loss + checkpoint_hysteresis < best_tracker[0]):
             if verbosity > 0: print("(checkpointed)".format(loss), end="")
             best_tracker = (loss,model.state_dict())
             last_checkpoint_epoch = epoch_idx

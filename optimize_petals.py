@@ -74,7 +74,6 @@ def evaluator(elevated_model, training_data, individual):
     return xloss
 
 # Create the hypermodel
-inputs = [torch.from_numpy(np.random.uniform(size=(12,4,6)).astype(np.float32))]
 elevated_model = MyTestModel()
 searchspace = elevated_model.get_searchspace()
 
