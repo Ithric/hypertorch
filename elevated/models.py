@@ -139,6 +139,8 @@ class SearchSpace(object):
                     key_values[key] = rec_collapse_searchspace_to_random(value)
                 elif isinstance(value, SearchSpacePrimitives.IntSpace):
                     key_values[key] = np.random.randint(value.from_int, value.to_int)
+                elif isinstance(value, SearchSpacePrimitives.FloatSpace):
+                    key_values[key] = np.random.uniform(value.from_float, value.to_float)
                 else:
                     raise Exception("Unknown type:", type(value))
 
@@ -157,6 +159,15 @@ class MaterializedModel(torch.nn.Module):
 
     def forward(self, x):
         return self.elevated_model(x)
+        
+        
+    def train(self, mode=True):
+        self.elevated_model.train(mode)
+        return super().train(mode)
+
+    def eval(self):
+        self.elevated_model.train(mode=False)
+        return super().eval()
 
     
 
@@ -165,20 +176,28 @@ class ElevatedModel(object):
     def __init__(self, name):
         super(ElevatedModel, self).__init__()
         self.__name = name
+        self.training = True
         pass
 
-    @property
-    def Name(self):
-        return self.__name
-
-    def forward(self, x):
-        pass
-
+    
     def __get_elevated_models(self):
         return [var for var in vars(self).items() if isinstance(var[1], ElevatedModel)]
 
     def __get_torch_modules(self):
         return [var for var in vars(self).items() if isinstance(var[1], torch.nn.Module)]
+
+    @property
+    def Name(self):
+        return self.__name
+    
+    def train(self, mode):
+        self.training = mode
+        for _,elevated_child in self.__get_elevated_models():
+            elevated_child.train(mode)
+
+    def forward(self, x):
+        pass
+
 
     def __call__(self, x):
         return self.forward(x)

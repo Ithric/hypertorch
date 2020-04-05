@@ -147,7 +147,7 @@ def train_model(model, train_data, validation_data, epochs, batch_size=256, use_
     
     if best_tracker != None:
         model.load_state_dict(best_tracker[1])
-    return model.cpu()
+    return model.cpu().eval()
 
 
 def cross_entropy(predictions, targets, epsilon=1e-12):

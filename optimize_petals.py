@@ -19,7 +19,9 @@ class MyTestModel(elevated.ElevatedModel):
     def __init__(self):
         super(MyTestModel, self).__init__("root")
         self.layer_a = MyTestModelSubModule("layer_a")
+        self.layer_a_noise = GaussianNoise("layer_a_noise")
         self.layer_b = ElevatedLinear(name="layer_b")
+        self.layer_b_dropout = ElevatedDropout("layer_b_dropout")
         self.layer_c = ElevatedLinear(name="layer_c", n_output_nodes=3)
 
         self.relu = torch.nn.ReLU()
@@ -28,7 +30,9 @@ class MyTestModel(elevated.ElevatedModel):
 
     def forward(self, x):
         y = self.layer_a(x[0])
+        y = self.layer_a_noise(y)
         y = self.layer_b(y)
+        y = self.layer_b_dropout(y)
         y = self.relu(y)
         y = self.layer_c(y)
         y = self.softmax(y)
