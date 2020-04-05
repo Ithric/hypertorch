@@ -84,7 +84,7 @@ def test( model, device, loss_model, test_x, test_y, batch_size=128):
     # / len(test_y[0])
     return avg_loss
 
-def train_model(model, train_data, validation_data, epochs, batch_size=256, use_cuda=True, keep_best=True, verbosity=1, loss_func="xentropy"):
+def train_model(model, train_data, validation_data, epochs, batch_size=256, use_cuda=True, keep_best=True, verbosity=1, patience=20, loss_func="xentropy"):
     """
     Arguments:
         - train_data: (train_x, train_y)
@@ -113,9 +113,10 @@ def train_model(model, train_data, validation_data, epochs, batch_size=256, use_
         return torch.from_numpy(a).to(device)
     
     best_tracker = None # (loss,weights)
-    for t in range(epochs):
+    last_checkpoint_epoch = 0
+    for epoch_idx in range(epochs):
         model.train()
-        if verbosity > 0: print("Epoch {} ..".format(t), end="", flush=True)
+        if verbosity > 0: print("Epoch {} ..".format(epoch_idx), end="", flush=True)
         epoch_start = pm.now()
 
         # Forward pass: Compute predicted y by passing x to the model
@@ -137,6 +138,11 @@ def train_model(model, train_data, validation_data, epochs, batch_size=256, use_
         if keep_best and (best_tracker == None or loss < best_tracker[0]):
             if verbosity > 0: print("(checkpointed)".format(loss), end="")
             best_tracker = (loss,model.state_dict())
+            last_checkpoint_epoch = epoch_idx
+        elif epoch_idx - last_checkpoint_epoch > patience:
+            if verbosity > 0: print("\n - Patience limit reached - giving up")            
+            break
+
         if verbosity > 0: print("")
     
     if best_tracker != None:
@@ -156,3 +162,37 @@ def cross_entropy(predictions, targets, epsilon=1e-12):
     N = predictions.shape[0]
     ce = -np.sum(targets*np.log(predictions+1e-9))/N
     return ce
+
+
+def split_data(vecs, split_factor=0.1):
+    num_samples = set([len(k) for k in vecs])
+    assert len(num_samples) == 1, "All vectors must be of equal length"
+    num_samples = list(num_samples)[0]
+    split_idx = num_samples - int(num_samples*split_factor)
+
+    return [t[:split_idx] for t in vecs], [t[split_idx:] for t in vecs]
+
+
+def load_iris_dataset(validation_split_factor=0.2):
+    from sklearn import datasets
+    from sklearn.preprocessing import label_binarize, robust_scale
+    from sklearn.utils import shuffle
+
+    iris = datasets.load_iris()
+    x = [iris.data[:, :4]] 
+    y = [label_binarize(iris.target, classes=[0,1,2])]
+
+    # scale the input data
+    x = [robust_scale(kx) for kx in x]
+    
+    # Shuffle the data
+    shuffle_index = np.arange(len(x[0]))
+    np.random.shuffle(shuffle_index)
+    x = [kx[shuffle_index] for kx in x]
+    y = [ky[shuffle_index] for ky in y]
+
+    # Pick 
+    validation_split_idx  =20
+    x,x_valid = [kx[:-validation_split_idx].astype(np.float32) for kx in x], [kx[-validation_split_idx:].astype(np.float32) for kx in x] # split_data(x, split_factor=validation_split_factor) #
+    y,y_valid = [ky[:-validation_split_idx].astype(np.float32) for ky in y], [ky[-validation_split_idx:].astype(np.float32) for ky in y] # split_data(y, split_factor=validation_split_factor) #
+    return (x,y), (x_valid,y_valid)
