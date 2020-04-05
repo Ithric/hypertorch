@@ -2,19 +2,28 @@ import torch
 from sklearn import datasets
 import numpy as np
 from modules import elevated
-from modules.elevated import nodelib
+from modules.elevated.nodelib import *
 from modules.common import pyutils
 from functools import partial
+
+
+class MyTestModelSubModule(elevated.ElevatedModel):
+    def __init__(self, name):
+        super(MyTestModelSubModule, self).__init__(name)
+        self.hidden_layer = ElevatedLinear(name="sub_linear")
+
+    def forward(self, x):
+        return self.hidden_layer(x)
 
 class MyTestModel(elevated.ElevatedModel):
     def __init__(self):
         super(MyTestModel, self).__init__("root")
-        self.layer_a = nodelib.ElevatedLinear(name="layer_a")
-        self.layer_b = nodelib.ElevatedLinear(name="layer_b")
-        self.layer_c = nodelib.ElevatedLinear(name="layer_c", n_output_nodes=3)
+        self.layer_a = MyTestModelSubModule("layer_a")
+        self.layer_b = ElevatedLinear(name="layer_b")
+        self.layer_c = ElevatedLinear(name="layer_c", n_output_nodes=3)
 
         self.relu = torch.nn.ReLU()
-        self.softmax = torch.nn.Softmax()
+        self.softmax = torch.nn.Softmax(dim=1)
         pass
 
     def forward(self, x):
@@ -48,12 +57,12 @@ inputs = [torch.from_numpy(np.random.uniform(size=(12,4,6)).astype(np.float32))]
 elevated_model = MyTestModel()
 searchspace = elevated_model.get_searchspace()
 
-
 def load_iris_dataset(validation_split_idx=25):
     from sklearn.preprocessing import label_binarize
     from sklearn.utils import shuffle
+
     iris = datasets.load_iris()
-    x = [iris.data[:, :2]]  # we only take the first two features.
+    x = [iris.data[:, :4]] 
     y = [label_binarize(iris.target, classes=[0,1,2])]
 
     shuffle_index = np.arange(len(x[0]))
@@ -66,10 +75,18 @@ def load_iris_dataset(validation_split_idx=25):
     return (x,y), (x_valid,y_valid)
 
 
+def split_data(vecs, split_factor=0.1):
+    num_samples = set([len(k) for k in vecs])
+    assert len(num_samples) == 1, "All vectors must be of equal length"
+    num_samples = list(num_samples)[0]
+    split_idx = num_samples - int(num_samples*split_factor)
 
-def evaluator(training_data, validation_data, individual):
+    return [t[:split_idx] for t in vecs], [t[split_idx:] for t in vecs]
+
+def evaluator(training_data, individual):
     x,y = training_data
-    x_valid, y_valid = validation_data
+    x,x_valid = split_data(x, split_factor=0.1)
+    y,y_valid = split_data(y, split_factor=0.1)
   
     # Materialize the model
     model = elevated_model.materialize(individual, [kx.shape[1:] for kx in x])
@@ -86,12 +103,12 @@ def evaluator(training_data, validation_data, individual):
 
 # Run the optimization
 training_data, validation_data = load_iris_dataset()
-best_individual, best_loss = optimizer_func(25, searchspace.create_random, partial(evaluator,training_data, validation_data))
+best_individual, best_loss = optimizer_func(25, searchspace.create_random, partial(evaluator,training_data))
 
 print("Best individual found (loss={}): {}".format(best_loss, best_individual))
 
 best_model = elevated_model.materialize(best_individual, [kx.shape[1:] for kx in validation_data[0]])
-best_model = pyutils.train_model(best_model, training_data, validation_data, epochs=150, verbosity=1)
+best_model = pyutils.train_model(best_model, training_data, validation_data, epochs=150, verbosity=0)
 predictions = best_model(list(map(torch.from_numpy, validation_data[0])))[0].detach().numpy()
 
 # Calculate accuracy

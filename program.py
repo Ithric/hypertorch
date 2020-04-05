@@ -2,16 +2,15 @@ import torch
 import pendulum as pm
 import numpy as np
 from modules import elevated
-from modules.elevated import nodelib
+from modules.elevated.nodelib import *
 from modules.common import pyutils
-from modules.common import pendulum_ext as pmx
 from sklearn import datasets
 from functools import reduce, partial
 
 class MyTestModelSubModule(elevated.ElevatedModel):
     def __init__(self, name):
         super(MyTestModelSubModule, self).__init__(name)
-        self.hidden_layer = nodelib.ElevatedLinear(name="sub_linear")
+        self.hidden_layer = ElevatedLinear(name="sub_linear")
 
     def forward(self, x):
         return self.hidden_layer(x)
@@ -19,10 +18,10 @@ class MyTestModelSubModule(elevated.ElevatedModel):
 class MyTestModel(elevated.ElevatedModel):
     def __init__(self):
         super(MyTestModel, self).__init__("root")
-        # self.layer_a = nodelib.ElevatedLinear(name="layer_a")
+        # self.layer_a = ElevatedLinear(name="layer_a")
         self.layer_a = MyTestModelSubModule("layer_a")
-        self.layer_b = nodelib.ElevatedLinear("layer_b")
-        self.layer_c = nodelib.ElevatedLinear("layer_c", n_output_nodes=1)
+        self.layer_b = ElevatedLinear("layer_b")
+        self.layer_c = ElevatedLinear("layer_c", n_output_nodes=1)
         pass
 
     def forward(self, x):

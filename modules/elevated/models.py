@@ -76,22 +76,28 @@ class SearchSpacePrimitives(object):
             self.from_int = from_int
             self.to_int = to_int
 
+        def __str__(self):
+            return "IntSpace(from_int={}, to_int={})".format(self.from_int, self.to_int)
+
     class FloatSpace(object):
         default_range = "default_floatspace"
 
-        def __init__(self, from_value, to_value):
-            self.from_value = from_value
-            self.to_value = to_value
+        def __init__(self, from_float, to_float):
+            self.from_float = from_float
+            self.to_float = to_float
+
+        def __str__(self):
+            return "FloatSpace(from_float={}, to_float={})".format(self.from_float, self.to_float)
 
 DefaultLayerConstants = {
     "ElevatedLinear" : { "nodes" : 64 }
 }
 
 class SearchSpace(object):
-    def __init__(self, type_key, key, ss_dict = dict()):
+    def __init__(self, type_key, key, ss_dict=None):
         self.__type_key = type_key
         self.__key = key
-        self._searchspace_dict = ss_dict
+        self._searchspace_dict = ss_dict or dict()
 
     def __str__(self):
         def recPrintSearchSpace(d, indent):
@@ -142,9 +148,9 @@ class SearchSpace(object):
         return rec_collapse_searchspace_to_random(self)
 
         
-class WrapperModule(torch.nn.Module):
+class MaterializedModel(torch.nn.Module):
     def __init__(self, elevated_model, torch_modules):
-        super(WrapperModule, self).__init__()
+        super(MaterializedModel, self).__init__()
         self.elevated_model = elevated_model
         for idx,(layer_key,module) in enumerate(torch_modules):
             self.add_module("{}#{}".format(idx,layer_key), module)
@@ -158,8 +164,12 @@ class WrapperModule(torch.nn.Module):
 class ElevatedModel(object):
     def __init__(self, name):
         super(ElevatedModel, self).__init__()
-        self.name = name
+        self.__name = name
         pass
+
+    @property
+    def Name(self):
+        return self.__name
 
     def forward(self, x):
         pass
@@ -173,11 +183,11 @@ class ElevatedModel(object):
     def __call__(self, x):
         return self.forward(x)
 
-    def materialize(self, individual : Individual, input_shapes, torch_module_list=[]):
+    def materialize(self, individual : Individual, input_shapes, torch_module_list=[]) -> MaterializedModel:
         """ Turn this higher order model into a regular torch.Module """
         if not hasattr(self, "original_forward"): self.original_forward = self.forward
-        # material_self = copy.deepcopy(self)
-        material_self = self # TODO: Make this function pure
+        material_self = copy.copy(self)
+        # material_self = self # TODO: Make this function pure
 
         def data_to_shape(data):
             if isinstance(data, (tuple,list)):
@@ -194,8 +204,8 @@ class ElevatedModel(object):
 
         def materializing_forward(variable_name, elevated_model_instance, original_forward, data):
             if elevated_model_instance.ismaterializing == True:
-                tmp = elevated_model_instance.materialize(individual.get(elevated_model_instance.name,None), data_to_shape(data))
-                if isinstance(tmp, WrapperModule):
+                tmp = elevated_model_instance.materialize(individual.get(elevated_model_instance.Name,None), data_to_shape(data))
+                if isinstance(tmp, MaterializedModel):
                     torch_module_list.extend(tmp.elevated_model.__get_torch_modules())
                 else:
                     torch_module_list.extend(tmp.__get_torch_modules())
@@ -207,7 +217,7 @@ class ElevatedModel(object):
         for variable_name,elevated_model in material_self.__get_elevated_models():
             if not hasattr(elevated_model, "original_forward"): 
                 elevated_model.original_forward = elevated_model.forward
-            elevated_model.forward = partial(materializing_forward, variable_name, elevated_model, elevated_model.forward)
+                elevated_model.forward = partial(materializing_forward, variable_name, elevated_model, elevated_model.forward)
 
             elevated_model.ismaterializing = True
 
@@ -219,31 +229,29 @@ class ElevatedModel(object):
         for _,elevated_model in material_self.__get_elevated_models():
             elevated_model.ismaterializing = False
 
-        return WrapperModule(material_self, torch_module_list)
+        return MaterializedModel(material_self, torch_module_list)
 
     def get_searchspace(self, default_searchspace_constants = DefaultRangeConstants()):
         """ Return a representation of the searchspace of the model """
-        def apply_defaults(ss, default_searchspace):
-            def rec_apply_default_range(searchspace):
-                for key,value in searchspace._searchspace_dict.items():
-                    if isinstance(value, SearchSpace):
-                        value = rec_apply_default_range(value)
-                    else:
-                        if value == SearchSpacePrimitives.IntSpace.default_range: value = SearchSpacePrimitives.IntSpace(*default_searchspace.IntSpaceDefault)
-                        elif value == SearchSpacePrimitives.FloatSpace.default_range: value = SearchSpacePrimitives.FloatSpace(*default_searchspace.FloatSpaceDefault)
+        def apply_defaults(searchspace, default_searchspace):
+            for key,value in searchspace._searchspace_dict.items():
+                if isinstance(value, SearchSpace):
+                    value = apply_defaults(value, default_searchspace)
+                else:
+                    if value == SearchSpacePrimitives.IntSpace.default_range: value = SearchSpacePrimitives.IntSpace(*default_searchspace_constants.IntSpaceDefault)
+                    elif value == SearchSpacePrimitives.FloatSpace.default_range: value = SearchSpacePrimitives.FloatSpace(*default_searchspace_constants.FloatSpaceDefault)
 
-                searchspace._searchspace_dict[key] = value
-                return searchspace
-
-            return rec_apply_default_range(copy.deepcopy(ss)) # rec SearchSpace(self.__type_key, self.__key, dict(map(lambda t: apply_default_range(*t), self._searchspace_dict.items())))
+            searchspace._searchspace_dict[key] = value
+            return searchspace
 
 
-        ss = SearchSpace(self.__class__.__name__, self.name)
+        ss = SearchSpace(self.__class__.__name__, self.__name)
 
         elevated_models = [var for var in vars(self).items() if isinstance(var[1], ElevatedModel)]
         for key,value in elevated_models:
             childss = value.get_searchspace()
-            if childss != None: ss.append_child(value.name, childss)
+            if childss != None: 
+                ss.append_child(value.Name, childss)
 
         ss = apply_defaults(ss, default_searchspace_constants)
         return ss
