@@ -44,9 +44,9 @@ class HyperDropout(HyperModel):
         return self.__searchspace
 
 
-class GaussianNoise(HyperModel):
+class HyperGaussNoise(HyperModel):
     def __init__(self, name, sigma=None):
-        super(GaussianNoise, self).__init__(name)
+        super(HyperGaussNoise, self).__init__(name)
         self.__noise = torch.tensor(0,)
         self.__searchspace = SearchSpace(self.__class__.__name__, self.Name, {
             "sigma" : sigma

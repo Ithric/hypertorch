@@ -20,7 +20,7 @@ class MyTestModel(hypertorch.HyperModel):
     def __init__(self):
         super(MyTestModel, self).__init__("root")
         self.layer_a = MyTestModelSubModule("layer_a")
-        self.layer_a_noise = GaussianNoise("layer_a_noise")
+        self.layer_a_noise = HyperGaussNoise("layer_a_noise")
         self.layer_b = HyperLinear("layer_b", n_output_nodes=IntSpace(1,176))
         self.layer_b_dropout = HyperDropout("layer_b_dropout")
         self.layer_c = HyperLinear("layer_c", n_output_nodes=3)
