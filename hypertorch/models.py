@@ -2,6 +2,8 @@ import torch
 import numpy as np
 from functools import partial
 import copy
+from hypertorch import searchspaceprimitives
+from hypertorch.constants import *
 
 
 class Individual(object):
@@ -62,42 +64,13 @@ class Individual(object):
         return self.__individual.get(key, default_value)
 
 
-class DefaultRangeConstants(object):
-    IntSpaceDefault = (1,500)
-    FloatSpaceDefault = (0.0,500.0)
-
-
-class SearchSpacePrimitives(object):
-
-    class IntSpace(object):
-        default_range = "default_intspace"
-
-        def __init__(self, from_int, to_int):
-            self.from_int = from_int
-            self.to_int = to_int
-
-        def __str__(self):
-            return "IntSpace(from_int={}, to_int={})".format(self.from_int, self.to_int)
-
-    class FloatSpace(object):
-        default_range = "default_floatspace"
-
-        def __init__(self, from_float, to_float):
-            self.from_float = from_float
-            self.to_float = to_float
-
-        def __str__(self):
-            return "FloatSpace(from_float={}, to_float={})".format(self.from_float, self.to_float)
-
-DefaultLayerConstants = {
-    "ElevatedLinear" : { "nodes" : 64 }
-}
 
 class SearchSpace(object):
     def __init__(self, type_key, key, ss_dict=None):
         self.__type_key = type_key
-        self.__key = key
+        self._key = key
         self._searchspace_dict = ss_dict or dict()
+        self.type_key = type_key
 
     def __str__(self):
         def recPrintSearchSpace(d, indent):
@@ -110,7 +83,7 @@ class SearchSpace(object):
                     output.append("{}\"{}\": {}".format(indent, key, item))
             return "\n".join(output)
 
-        return "\"{}#{}\"".format(self.__type_key, self.__key) + " : {\n" + recPrintSearchSpace(self, indent="  ") + "\n}"
+        return "\"{}#{}\"".format(self.__type_key, self._key) + " : {\n" + recPrintSearchSpace(self, indent="  ") + "\n}"
 
     def append_child(self, key, ss):
         self._searchspace_dict[key] = ss
@@ -131,57 +104,60 @@ class SearchSpace(object):
     
         return rec_collapse_searchspace(self)
 
-    def create_random(self, default_searchspace = DefaultRangeConstants()) -> Individual:
+    def create_random(self) -> Individual:
         def rec_collapse_searchspace_to_random(searchspace : SearchSpace) -> Individual:
             key_values = dict()
             for key,value in searchspace._searchspace_dict.items():
                 if isinstance(value, SearchSpace):
                     key_values[key] = rec_collapse_searchspace_to_random(value)
-                elif isinstance(value, SearchSpacePrimitives.IntSpace):
+                elif isinstance(value, searchspaceprimitives.IntSpace):
                     key_values[key] = np.random.randint(value.from_int, value.to_int)
-                elif isinstance(value, SearchSpacePrimitives.FloatSpace):
+                elif isinstance(value, searchspaceprimitives.FloatSpace):
                     key_values[key] = np.random.uniform(value.from_float, value.to_float)
+                elif isinstance(value, searchspaceprimitives.NoSpace):
+                    key_values[key] = value.exact_value
                 else:
                     raise Exception("Unknown type:", type(value))
-
 
             return Individual(key_values)
 
         return rec_collapse_searchspace_to_random(self)
 
+    def get(self, key, default_value=None):
+        return self._searchspace_dict.get(key, default_value)
+
         
 class MaterializedModel(torch.nn.Module):
-    def __init__(self, elevated_model, torch_modules):
+    def __init__(self, hyper_model, torch_modules):
         super(MaterializedModel, self).__init__()
-        self.elevated_model = elevated_model
+        self.hyper_model = hyper_model
         for idx,(layer_key,module) in enumerate(torch_modules):
             self.add_module("{}#{}".format(idx,layer_key), module)
 
     def forward(self, x):
-        return self.elevated_model(x)
+        return self.hyper_model(x)
         
         
     def train(self, mode=True):
-        self.elevated_model.train(mode)
+        self.hyper_model.train(mode)
         return super().train(mode)
 
     def eval(self):
-        self.elevated_model.train(mode=False)
+        self.hyper_model.train(mode=False)
         return super().eval()
 
     
 
 
-class ElevatedModel(object):
+class HyperModel(object):
     def __init__(self, name):
-        super(ElevatedModel, self).__init__()
+        super(HyperModel, self).__init__()
         self.__name = name
         self.training = True
         pass
-
     
-    def __get_elevated_models(self):
-        return [var for var in vars(self).items() if isinstance(var[1], ElevatedModel)]
+    def __get_hyper_models(self):
+        return [var for var in vars(self).items() if isinstance(var[1], HyperModel)]
 
     def __get_torch_modules(self):
         return [var for var in vars(self).items() if isinstance(var[1], torch.nn.Module)]
@@ -192,8 +168,8 @@ class ElevatedModel(object):
     
     def train(self, mode):
         self.training = mode
-        for _,elevated_child in self.__get_elevated_models():
-            elevated_child.train(mode)
+        for _,hyper_child in self.__get_hyper_models():
+            hyper_child.train(mode)
 
     def forward(self, x):
         pass
@@ -221,11 +197,11 @@ class ElevatedModel(object):
                 return torch.from_numpy(np.zeros((1,)+input_shapes, dtype=np.float32))
                 
 
-        def materializing_forward(variable_name, elevated_model_instance, original_forward, data):
-            if elevated_model_instance.ismaterializing == True:
-                tmp = elevated_model_instance.materialize(individual.get(elevated_model_instance.Name,None), data_to_shape(data))
+        def materializing_forward(variable_name, hyper_model_instance, original_forward, data):
+            if hyper_model_instance.ismaterializing == True:
+                tmp = hyper_model_instance.materialize(individual.get(hyper_model_instance.Name,None), data_to_shape(data))
                 if isinstance(tmp, MaterializedModel):
-                    torch_module_list.extend(tmp.elevated_model.__get_torch_modules())
+                    torch_module_list.extend(tmp.hyper_model.__get_torch_modules())
                 else:
                     torch_module_list.extend(tmp.__get_torch_modules())
 
@@ -233,45 +209,46 @@ class ElevatedModel(object):
             else:
                 return original_forward(data)
 
-        for variable_name,elevated_model in material_self.__get_elevated_models():
-            if not hasattr(elevated_model, "original_forward"): 
-                elevated_model.original_forward = elevated_model.forward
-                elevated_model.forward = partial(materializing_forward, variable_name, elevated_model, elevated_model.forward)
+        for variable_name,hyper_model in material_self.__get_hyper_models():
+            if not hasattr(hyper_model, "original_forward"): 
+                hyper_model.original_forward = hyper_model.forward
+                hyper_model.forward = partial(materializing_forward, variable_name, hyper_model, hyper_model.forward)
 
-            elevated_model.ismaterializing = True
+            hyper_model.ismaterializing = True
 
         # Perform a materializing forward
         fake_data = shapes_to_sampledata(input_shapes)
         material_self.original_forward(fake_data)
 
         # Disable materialization
-        for _,elevated_model in material_self.__get_elevated_models():
-            elevated_model.ismaterializing = False
+        for _,hyper_model in material_self.__get_hyper_models():
+            hyper_model.ismaterializing = False
 
         return MaterializedModel(material_self, torch_module_list)
 
-    def get_searchspace(self, default_searchspace_constants = DefaultRangeConstants()):
+    def get_searchspace(self, default_layer_searchspace = DefaultLayerSpace):
         """ Return a representation of the searchspace of the model """
-        def apply_defaults(searchspace, default_searchspace):
+
+        def rec_merge_space(searchspace, default_searchspace, path=""):
+            default_value = default_searchspace.get(searchspace.type_key, searchspace)
             for key,value in searchspace._searchspace_dict.items():
                 if isinstance(value, SearchSpace):
-                    value = apply_defaults(value, default_searchspace)
-                else:
-                    if value == SearchSpacePrimitives.IntSpace.default_range: value = SearchSpacePrimitives.IntSpace(*default_searchspace_constants.IntSpaceDefault)
-                    elif value == SearchSpacePrimitives.FloatSpace.default_range: value = SearchSpacePrimitives.FloatSpace(*default_searchspace_constants.FloatSpaceDefault)
-
-            searchspace._searchspace_dict[key] = value
+                    value = rec_merge_space(value, default_searchspace, "{}/{}".format(path,searchspace._key))
+                elif value is None: value = default_value.get(key,None)
+                if value is None: raise Exception("Undefined searchspace on {}/{}#{}".format(path, searchspace.type_key, searchspace._key))
+                searchspace._searchspace_dict[key] = value
             return searchspace
 
 
+        # Build the searchspace from all underlying hyper models
         ss = SearchSpace(self.__class__.__name__, self.__name)
-
-        elevated_models = [var for var in vars(self).items() if isinstance(var[1], ElevatedModel)]
-        for key,value in elevated_models:
+        hyper_models = [var for var in vars(self).items() if isinstance(var[1], HyperModel)]
+        for key,value in hyper_models:
             childss = value.get_searchspace()
             if childss != None: 
                 ss.append_child(value.Name, childss)
 
-        ss = apply_defaults(ss, default_searchspace_constants)
+        # Merge with default searchspace per layer (where value is Null -> failover to default space)
+        ss = rec_merge_space(ss, default_layer_searchspace, "..")
         return ss
 

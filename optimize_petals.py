@@ -1,28 +1,29 @@
 import torch
 import numpy as np
-import elevated
-from elevated.nodelib import *
+import hypertorch
+from hypertorch.nodelib import *
+from hypertorch.searchspaceprimitives import *
 from common import pyutils
 from functools import partial
 
 OPTIMIZATION_TRIALS = 25
 
-class MyTestModelSubModule(elevated.ElevatedModel):
+class MyTestModelSubModule(hypertorch.HyperModel):
     def __init__(self, name):
         super(MyTestModelSubModule, self).__init__(name)
-        self.hidden_layer = ElevatedLinear(name="sub_linear")
+        self.hidden_layer = HyperLinear("sub_linear")
 
     def forward(self, x):
         return self.hidden_layer(x)
 
-class MyTestModel(elevated.ElevatedModel):
+class MyTestModel(hypertorch.HyperModel):
     def __init__(self):
         super(MyTestModel, self).__init__("root")
         self.layer_a = MyTestModelSubModule("layer_a")
         self.layer_a_noise = GaussianNoise("layer_a_noise")
-        self.layer_b = ElevatedLinear(name="layer_b")
-        self.layer_b_dropout = ElevatedDropout("layer_b_dropout")
-        self.layer_c = ElevatedLinear(name="layer_c", n_output_nodes=3)
+        self.layer_b = HyperLinear("layer_b", n_output_nodes=IntSpace(1,176))
+        self.layer_b_dropout = HyperDropout("layer_b_dropout")
+        self.layer_c = HyperLinear("layer_c", n_output_nodes=3)
 
         self.relu = torch.nn.ReLU()
         self.softmax = torch.nn.Softmax(dim=1)
@@ -59,13 +60,13 @@ def optimizer_func(evaluations, random_individual_builder, evaluator):
     return individuals[best_index], loss_values[best_index]
 
 
-def evaluator(elevated_model, training_data, individual):
+def evaluator(hyper_model, training_data, individual):
     x,y = training_data
     x,x_valid = pyutils.split_data(x, split_factor=0.1)
     y,y_valid = pyutils.split_data(y, split_factor=0.1)
   
     # Materialize the model
-    model = elevated_model.materialize(individual, [kx.shape[1:] for kx in x])
+    model = hyper_model.materialize(individual, [kx.shape[1:] for kx in x])
     model = pyutils.train_model(model, training_data, validation_data, epochs=20, patience=25, verbosity=0)
     prediction = model(list(map(torch.from_numpy, x_valid)))
 
@@ -78,16 +79,16 @@ def evaluator(elevated_model, training_data, individual):
     return xloss
 
 # Create the hypermodel
-elevated_model = MyTestModel()
-searchspace = elevated_model.get_searchspace()
+hyper_model = MyTestModel()
+searchspace = hyper_model.get_searchspace()
 
 # Run the optimization
 training_data, validation_data = pyutils.load_iris_dataset()
-best_individual, best_loss = optimizer_func(OPTIMIZATION_TRIALS, searchspace.create_random, partial(evaluator,elevated_model,training_data))
+best_individual, best_loss = optimizer_func(OPTIMIZATION_TRIALS, searchspace.create_random, partial(evaluator,hyper_model,training_data))
 print("Best individual found (loss={}): {}".format(best_loss, best_individual))
 
 # Test the best individual
-best_model = elevated_model.materialize(best_individual, [kx.shape[1:] for kx in validation_data[0]])
+best_model = hyper_model.materialize(best_individual, [kx.shape[1:] for kx in validation_data[0]])
 best_model = pyutils.train_model(best_model, training_data, validation_data, epochs=5000, patience=25, verbosity=1)
 predictions = best_model(list(map(torch.from_numpy, validation_data[0])))[0].detach().numpy()
 

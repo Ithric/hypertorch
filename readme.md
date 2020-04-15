@@ -5,12 +5,12 @@ Hypertorch is created to make building and optimizing pytorch modules easier by 
 Start by defining the model:
 
 ```python
-class MyTestModel(elevated.ElevatedModel):
+class MyTestModel(hyper.HyperModel):
     def __init__(self):
         super(MyTestModel, self).__init__("root")
-        self.layer_a = ElevatedLinear("layer_a")
-        self.layer_b = ElevatedLinear("layer_b")
-        self.layer_c = ElevatedLinear("layer_c", n_output_nodes=1)
+        self.layer_a = HyperLinear("layer_a")
+        self.layer_b = HyperLinear("layer_b")
+        self.layer_c = HyperLinear("layer_c", n_output_nodes=1)
         pass
 
     def forward(self, x):
@@ -20,14 +20,14 @@ class MyTestModel(elevated.ElevatedModel):
         return y
 ```
 
-The elevated model needs to be materialized before it can be used:
+The hyper model needs to be materialized before it can be used:
 
 ```python
 # Create the hypermodel
-elevated_model = MyTestModel()
-searchspace = elevated_model.get_searchspace()
+hyper_model = MyTestModel()
+searchspace = hyper_model.get_searchspace()
 individual = searchspace.default_individual()
 
 # Materialize the model - returns a regular pytorch nn.Module
-model = elevated_model.materialize(individual, [kx.shape[1:] for kx in inputs])
+model = hyper_model.materialize(individual, [kx.shape[1:] for kx in inputs])
 ```
