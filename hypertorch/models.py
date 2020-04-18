@@ -16,7 +16,7 @@ class Individual(object):
             for key,item in d.__individual.items():
                 if isinstance(item,Individual): 
                     inner = rec_print(item,indent + "  ")
-                    output.append("{}\"{}\": {{\n{}{}\n{}}}".format(indent, key, indent, inner, indent))
+                    output.append("{}\"{}\": {{\n{}\n{}}}".format(indent, key, inner, indent))
                 else: 
                     output.append("{}\"{}\": {}".format(indent, key, item))
             return ",\n".join(output)
@@ -64,6 +64,8 @@ class Individual(object):
         return self.__individual.get(key, default_value)
 
 
+class NullSpace(object):
+    pass
 
 class SearchSpace(object):
     def __init__(self, type_key, key, ss_dict=None):
@@ -77,30 +79,42 @@ class SearchSpace(object):
             output = []
             for key,item in d._searchspace_dict.items():
                 if isinstance(item,SearchSpace): 
-                    inner = recPrintSearchSpace(item,indent+"  ")
-                    output.append("{}\"{}#{}\": {{\n{}{}\n{}}}".format(indent, item.__type_key, key, indent, inner, indent))
+                    inner = recPrintSearchSpace(item,indent + "  ")
+                    output.append("{}\"{}#{}\": {{\n{}\n{}}}".format(indent, item.__type_key, key, inner, indent))
                 else: 
                     output.append("{}\"{}\": {}".format(indent, key, item))
-            return "\n".join(output)
+            return ",\n".join(output)
 
         return "\"{}#{}\"".format(self.__type_key, self._key) + " : {\n" + recPrintSearchSpace(self, indent="  ") + "\n}"
 
     def append_child(self, key, ss):
         self._searchspace_dict[key] = ss
-
+        
     def default_individual(self, default_values = DefaultLayerConstants) -> Individual:
-        def rec_collapse_searchspace(searchspace) -> Individual:
-            if searchspace.__type_key in default_values:
-                return Individual.parse(default_values[searchspace.__type_key])
-            else:
-                key_values = {}
-                for key,value in searchspace._searchspace_dict.items():
-                    if isinstance(value, SearchSpace):
-                        key_values[key] = rec_collapse_searchspace(value)
-                    else:
-                        raise Exception("Unknown type:", value)
+        def rec_collapse_searchspace(searchspace) -> Individual:            
+            key_values = {}
+            default_key_values = default_values.get(searchspace.__type_key, {})
+            all_keys = set(default_key_values.keys()).union(searchspace._searchspace_dict.keys())
+            
+            for key in all_keys:
+                left = searchspace._searchspace_dict.get(key, None)
+                right = default_key_values.get(key, None)
 
-                return Individual(key_values)
+                if left is not None and right is not None: # Merge them
+                    if isinstance(left, searchspaceprimitives.NoSpace): key_values[key] = left.exact_value
+                    else: key_values[key] = right
+
+                elif left is not None:
+                    if isinstance(left, SearchSpace): key_values[key] = rec_collapse_searchspace(left)
+                    else: raise Exception("Unknown left type: {}".format(left))
+
+                elif right is not None:
+                    key_values[key] = right
+
+                else:
+                    raise Exception("This is not possible")
+
+            return Individual(key_values)
     
         return rec_collapse_searchspace(self)
 
@@ -108,7 +122,9 @@ class SearchSpace(object):
         def rec_collapse_searchspace_to_random(searchspace : SearchSpace) -> Individual:
             key_values = dict()
             for key,value in searchspace._searchspace_dict.items():
-                if isinstance(value, SearchSpace):
+                if isinstance(value, NullSpace):
+                    continue
+                elif isinstance(value, SearchSpace):
                     key_values[key] = rec_collapse_searchspace_to_random(value)
                 elif isinstance(value, searchspaceprimitives.IntSpace):
                     key_values[key] = np.random.randint(value.from_int, value.to_int)
@@ -116,8 +132,10 @@ class SearchSpace(object):
                     key_values[key] = np.random.uniform(value.from_float, value.to_float)
                 elif isinstance(value, searchspaceprimitives.NoSpace):
                     key_values[key] = value.exact_value
+                elif isinstance(value, searchspaceprimitives.OneOfSet):
+                    key_values[key] = np.random.choice(value.set_values)
                 else:
-                    raise Exception("Unknown type:", type(value))
+                    raise Exception("Unknown type under {}: {}".format(key,type(value)))
 
             return Individual(key_values)
 
@@ -150,6 +168,8 @@ class MaterializedModel(torch.nn.Module):
 
 
 class HyperModel(object):
+    materializing_hack = False
+
     def __init__(self, name):
         super(HyperModel, self).__init__()
         self.__name = name
@@ -180,9 +200,16 @@ class HyperModel(object):
 
     def materialize(self, individual : Individual, input_shapes, torch_module_list=[]) -> MaterializedModel:
         """ Turn this higher order model into a regular torch.Module """
-        if not hasattr(self, "original_forward"): self.original_forward = self.forward
-        material_self = copy.copy(self)
-        # material_self = self # TODO: Make this function pure
+        is_root = HyperModel.materializing_hack == False
+        if is_root:
+            material_self = copy.deepcopy(self)
+            HyperModel.materializing_hack = True
+        else:
+            material_self = self
+
+        # Preserve the original forward function
+        if not hasattr(material_self, "original_forward"): 
+            material_self.original_forward = material_self.forward
 
         def data_to_shape(data):
             if isinstance(data, (tuple,list)):
@@ -197,7 +224,7 @@ class HyperModel(object):
                 return torch.from_numpy(np.zeros((1,)+input_shapes, dtype=np.float32))
                 
 
-        def materializing_forward(variable_name, hyper_model_instance, original_forward, data):
+        def materializing_forward(individual, variable_name, hyper_model_instance, original_forward, data):
             if hyper_model_instance.ismaterializing == True:
                 tmp = hyper_model_instance.materialize(individual.get(hyper_model_instance.Name,None), data_to_shape(data))
                 if isinstance(tmp, MaterializedModel):
@@ -212,7 +239,7 @@ class HyperModel(object):
         for variable_name,hyper_model in material_self.__get_hyper_models():
             if not hasattr(hyper_model, "original_forward"): 
                 hyper_model.original_forward = hyper_model.forward
-                hyper_model.forward = partial(materializing_forward, variable_name, hyper_model, hyper_model.forward)
+                hyper_model.forward = partial(materializing_forward, individual, variable_name, hyper_model, hyper_model.forward)
 
             hyper_model.ismaterializing = True
 
@@ -224,6 +251,7 @@ class HyperModel(object):
         for _,hyper_model in material_self.__get_hyper_models():
             hyper_model.ismaterializing = False
 
+        if is_root == True: HyperModel.materializing_hack = False
         return MaterializedModel(material_self, torch_module_list)
 
     def get_searchspace(self, default_layer_searchspace = DefaultLayerSpace):

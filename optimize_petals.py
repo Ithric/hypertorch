@@ -22,7 +22,11 @@ class MyTestModel(hypertorch.HyperModel):
         self.layer_a = MyTestModelSubModule("layer_a")
         self.layer_a_noise = HyperGaussNoise("layer_a_noise")
         self.layer_b = HyperLinear("layer_b", n_output_nodes=IntSpace(1,176))
-        self.layer_b_dropout = HyperDropout("layer_b_dropout")
+        self.layer_b_augmentation = HyperNodeSelector("layer_b_aug", {
+            "noop" : HyperNoOp("noop"),
+            "gauss" : HyperGaussNoise("gauss"),
+            "drop" : HyperDropout("drop")
+        }, default_key="noop")
         self.layer_c = HyperLinear("layer_c", n_output_nodes=3)
 
         self.relu = torch.nn.ReLU()
@@ -33,7 +37,7 @@ class MyTestModel(hypertorch.HyperModel):
         y = self.layer_a(x[0])
         y = self.layer_a_noise(y)
         y = self.layer_b(y)
-        y = self.layer_b_dropout(y)
+        y = self.layer_b_augmentation(y)
         y = self.relu(y)
         y = self.layer_c(y)
         y = self.softmax(y)
