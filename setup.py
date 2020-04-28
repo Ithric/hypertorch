@@ -7,5 +7,5 @@ setup(
     license="MIT License",
     depends=["requests"],
     description="High level pytorch module programming framework",
-    install_requires=["pytorch","numpy","toolz"]
+    install_requires=["torch","numpy","toolz"]
 )
