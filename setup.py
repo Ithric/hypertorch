@@ -5,7 +5,7 @@ setup(
     version="0.0.3",
     packages=["hypertorch"],
     license="MIT License",
-    depends=["requests"],
+    depends=["torch","numpy","toolz"],
     description="High level pytorch module programming framework",
-    install_requires=["torch","numpy","toolz"]
+    install_requires=[]
 )
