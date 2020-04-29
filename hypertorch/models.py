@@ -194,12 +194,12 @@ class HyperModel(object):
     def forward(self, x):
         pass
 
-
     def __call__(self, x):
         return self.forward(x)
 
-    def materialize(self, individual : Individual, input_shapes, torch_module_list=[]) -> MaterializedModel:
+    def materialize(self, individual : Individual, input_shapes, torch_module_list=None) -> MaterializedModel:
         """ Turn this higher order model into a regular torch.Module """
+        torch_module_list = torch_module_list or []
         is_root = HyperModel.materializing_hack == False
         if is_root:
             material_self = copy.deepcopy(self)

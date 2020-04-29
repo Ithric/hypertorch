@@ -1,13 +1,15 @@
 import torch 
 import pendulum as pm
 import numpy as np
-import hypertorch
-from hypertorch.nodelib import *
 from common import pyutils
 from sklearn import datasets
 from functools import reduce, partial
 
-class MyTestModelSubModule(hyper.HyperModel):
+import hypertorch
+from hypertorch.nodelib import *
+from hypertorch.searchspaceprimitives import *
+
+class MyTestModelSubModule(hypertorch.HyperModel):
     def __init__(self, name):
         super(MyTestModelSubModule, self).__init__(name)
         self.hidden_layer = HyperLinear(name="sub_linear")
@@ -15,11 +17,11 @@ class MyTestModelSubModule(hyper.HyperModel):
     def forward(self, x):
         return self.hidden_layer(x)
 
-class MyTestModel(hyper.HyperModel):
+class MyTestModel(hypertorch.HyperModel):
     def __init__(self):
         super(MyTestModel, self).__init__("root")
         # self.layer_a = HyperLinear(name="layer_a")
-        self.layer_a = MyTestModelSubModule("layer_a")
+        self.layer_a = HyperLinear("layer_a")
         self.layer_b = HyperLinear("layer_b")
         self.layer_c = HyperLinear("layer_c", n_output_nodes=1)
         pass
@@ -37,6 +39,20 @@ inputs = [torch.from_numpy(np.random.uniform(size=(12,4,6)).astype(np.float32))]
 hyper_model = MyTestModel()
 searchspace = hyper_model.get_searchspace()
 individual = searchspace.default_individual()
+
+print("building nr 1")
+hyper_model = MyTestModel()
+test_model = hyper_model.materialize(individual, [kx.shape[1:] for kx in inputs])
+print("building nr 2")
+hyper_model = MyTestModel()
+test_model = hyper_model.materialize(individual, [kx.shape[1:] for kx in inputs])
+print("building nr 3")
+hyper_model = MyTestModel()
+test_model = hyper_model.materialize(individual, [kx.shape[1:] for kx in inputs])
+
+print("Final keyset:", test_model.state_dict().keys())
+print("imr here")
+exit(1)
 # individual = hyper.Individual.coalesce(individual, hyper.Individual.parse({
 #   "layer_a": {'nodes': 340}
 # }))
