@@ -84,7 +84,7 @@ def test( model, device, loss_model, test_x, test_y, batch_size=128):
     # / len(test_y[0])
     return avg_loss
 
-def train_model(model, train_data, validation_data, epochs, batch_size=256, use_cuda=True, keep_best=True, verbosity=1, patience=20, checkpoint_hysteresis=0.001, loss_func="xentropy"):
+def train_model(model, train_data, validation_data, epochs, batch_size=256, device="cpu", keep_best=True, verbosity=1, patience=20, checkpoint_hysteresis=0.001, loss_func="xentropy"):
     """
     Arguments:
         - train_data: (train_x, train_y)
@@ -94,7 +94,7 @@ def train_model(model, train_data, validation_data, epochs, batch_size=256, use_
         print("Training model: {} samples, {} validation".format(len(train_data[0][0]), len(validation_data[0][0])))
 
     # train_data = (list(map(torch.from_numpy,train_data[0])), list(map(torch.from_numpy,train_data[0])))
-    device = torch.device("cuda" if use_cuda else "cpu")
+    device = torch.device(device)
     model = model.to(device) 
 
     if loss_func == "xentropy":

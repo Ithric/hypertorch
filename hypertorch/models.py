@@ -227,8 +227,8 @@ class HyperModel(object):
         def materializing_forward(individual, variable_name, hyper_model_instance, original_forward, data):
             if hyper_model_instance.ismaterializing == True:
                 tmp = hyper_model_instance.materialize(individual.get(hyper_model_instance.Name,None), data_to_shape(data))
-                if isinstance(tmp, MaterializedModel):
-                    torch_module_list.extend(tmp.hyper_model.__get_torch_modules())
+                if isinstance(tmp, torch.nn.Module):
+                    torch_module_list.append((variable_name,tmp))
                 else:
                     torch_module_list.extend(tmp.__get_torch_modules())
 

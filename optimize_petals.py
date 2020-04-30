@@ -71,7 +71,7 @@ def evaluator(hyper_model, training_data, individual):
   
     # Materialize the model
     model = hyper_model.materialize(individual, [kx.shape[1:] for kx in x])
-    model = pyutils.train_model(model, training_data, validation_data, epochs=20, patience=25, verbosity=0)
+    model = pyutils.train_model(model, training_data, validation_data, epochs=200, patience=25, verbosity=0, device="cuda")
     prediction = model(list(map(torch.from_numpy, x_valid)))
 
     xloss = pyutils.cross_entropy(prediction[0].detach().numpy(), y_valid)
