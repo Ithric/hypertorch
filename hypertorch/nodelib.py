@@ -33,7 +33,7 @@ class HyperDropout(HyperModel):
             "dropout_p" : None
         })
     
-    def materialize(self, individual, input_shapes, torch_module_list=[]):
+    def materialize(self, individual, input_shapes, torch_module_list=None):
         self.layer = nn.Dropout(individual["dropout_p"])
         return self
 
@@ -52,7 +52,7 @@ class HyperGaussNoise(HyperModel):
             "sigma" : sigma
         })
         
-    def materialize(self, individual, input_shapes, torch_module_list=[]):
+    def materialize(self, individual, input_shapes, torch_module_list=None):
         self.__sigma = individual["sigma"]
         return self
 
@@ -71,7 +71,7 @@ class HyperNoOp(HyperModel):
     def __init__(self, name):
         super(HyperNoOp, self).__init__(name)
     
-    def materialize(self, individual, input_shapes, torch_module_list=[]):
+    def materialize(self, individual, input_shapes, torch_module_list=None):
         return self
 
     def forward(self, x):
@@ -87,7 +87,10 @@ class HyperNodeSelector(HyperModel):
 
         conditional_spaces = SearchSpace("ConditionalNode","spaces")
         for hyperNodeKey,hyperNode in hyperNodes.items():
-            conditional_spaces.append_child(hyperNodeKey, hyperNode.get_searchspace())
+            if isinstance(hyperNode, HyperModel):
+                conditional_spaces.append_child(hyperNodeKey, hyperNode.get_searchspace())
+            else:
+                continue
 
         self.__searchspace = SearchSpace(self.__class__.__name__, self.Name, {
             "key" : OneOfSet([k for k in hyperNodes.keys()]),
@@ -95,10 +98,13 @@ class HyperNodeSelector(HyperModel):
         })
         self.__default_key = default_key
 
-    def materialize(self, individual, input_shapes, torch_module_list=[]):
+    def materialize(self, individual, input_shapes, torch_module_list=None):
         selected_key = individual["key"]
         if selected_key == "default_key": selected_key = self.__default_key
-        self.active_node = self.__hyperNodes[selected_key].materialize(individual["spaces"][selected_key], input_shapes)
+        if isinstance(self.__hyperNodes[selected_key], HyperModel):
+            self.active_node = self.__hyperNodes[selected_key].materialize(individual["spaces"][selected_key], input_shapes)
+        else:
+            self.active_node = self.__hyperNodes[selected_key]
         return self
 
     def forward(self, x):

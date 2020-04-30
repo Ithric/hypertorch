@@ -31,7 +31,11 @@ class MyTestModel(hypertorch.HyperModel):
         }, default_key="noop")
         self.layer_c = HyperLinear("layer_c", n_output_nodes=3)
 
-        self.relu = torch.nn.ReLU()
+        self.midpoint_activation = HyperNodeSelector("midpoint_activation_layer", { 
+            "nope" : HyperNoOp("nope"),
+            "relu" : torch.nn.ReLU(),
+            "elu" : torch.nn.ELU()
+        }, default_key = "nope")
         self.softmax = torch.nn.Softmax(dim=1)
         pass
 
@@ -40,7 +44,7 @@ class MyTestModel(hypertorch.HyperModel):
         y = self.layer_a_noise(y)
         y = self.hidden_modules[0](y)
         y = self.layer_b_augmentation(y)
-        y = self.relu(y)
+        y = self.midpoint_activation(y)
         y = self.layer_c(y)
         y = self.softmax(y)
         return [y]
