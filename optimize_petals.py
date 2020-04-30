@@ -21,7 +21,9 @@ class MyTestModel(hypertorch.HyperModel):
         super(MyTestModel, self).__init__("root")
         self.layer_a = MyTestModelSubModule("layer_a")
         self.layer_a_noise = HyperGaussNoise("layer_a_noise")
-        self.layer_b = HyperLinear("layer_b", n_output_nodes=IntSpace(1,176))
+        self.hidden_modules = [
+            self.add_module("layer_b", HyperLinear("layer_b", n_output_nodes=IntSpace(1,176)))
+        ]
         self.layer_b_augmentation = HyperNodeSelector("layer_b_aug", {
             "noop" : HyperNoOp("noop"),
             "gauss" : HyperGaussNoise("gauss"),
@@ -36,7 +38,7 @@ class MyTestModel(hypertorch.HyperModel):
     def forward(self, x):
         y = self.layer_a(x[0])
         y = self.layer_a_noise(y)
-        y = self.layer_b(y)
+        y = self.hidden_modules[0](y)
         y = self.layer_b_augmentation(y)
         y = self.relu(y)
         y = self.layer_c(y)

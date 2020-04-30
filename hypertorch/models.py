@@ -174,13 +174,14 @@ class HyperModel(object):
         super(HyperModel, self).__init__()
         self.__name = name
         self.training = True
+        self.modules = []
         pass
     
     def __get_hyper_models(self):
-        return [var for var in vars(self).items() if isinstance(var[1], HyperModel)]
+        return [var for var in list(vars(self).items()) + self.modules if isinstance(var[1], HyperModel)]
 
     def __get_torch_modules(self):
-        return [var for var in vars(self).items() if isinstance(var[1], torch.nn.Module)]
+        return [var for var in list(vars(self).items()) + self.modules if isinstance(var[1], torch.nn.Module)]
 
     @property
     def Name(self):
@@ -196,6 +197,10 @@ class HyperModel(object):
 
     def __call__(self, x):
         return self.forward(x)
+
+    def add_module(self, key, module):
+        self.modules.append((key,module))
+        return module
 
     def materialize(self, individual : Individual, input_shapes, torch_module_list=None) -> MaterializedModel:
         """ Turn this higher order model into a regular torch.Module """
@@ -270,7 +275,7 @@ class HyperModel(object):
 
         # Build the searchspace from all underlying hyper models
         ss = SearchSpace(self.__class__.__name__, self.__name)
-        hyper_models = [var for var in vars(self).items() if isinstance(var[1], HyperModel)]
+        hyper_models = self.__get_hyper_models() # [var for var in vars(self).items() if isinstance(var[1], HyperModel)]
         for key,value in hyper_models:
             childss = value.get_searchspace()
             if childss != None: 
