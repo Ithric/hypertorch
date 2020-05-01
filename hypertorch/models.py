@@ -171,7 +171,6 @@ class HyperModel(object):
 
     def __init__(self):
         super(HyperModel, self).__init__()
-        self.__name = None
         self.training = True
         self.modules = []
         pass
@@ -181,17 +180,7 @@ class HyperModel(object):
 
     def __get_torch_modules(self):
         return [var for var in list(vars(self).items()) + self.modules if isinstance(var[1], torch.nn.Module)]
-
-    @property
-    def Name(self):
-        raise Exception("remove name variable? what??")
-        if self.__name is None: raise Exception("Name of module is not set", self)
-        return self.__name
-    
-    @Name.setter
-    def Name(self, value):
-        self.__name = value
-    
+   
     
     def train(self, mode):
         self.training = mode
@@ -205,7 +194,6 @@ class HyperModel(object):
         return self.forward(x)
 
     def add_module(self, key, module):
-        module.Name = key
         self.modules.append((key,module))
         return module
 
@@ -223,7 +211,6 @@ class HyperModel(object):
             material_self = copy.deepcopy(self)
             HyperModel.materializing_hack = True
             self.__recursive_apply_variable_name()
-            self.__name = "root"
         else:
             material_self = self
 

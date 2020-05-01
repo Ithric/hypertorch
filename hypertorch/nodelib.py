@@ -88,7 +88,6 @@ class HyperNodeSelector(HyperModel):
         conditional_spaces = SearchSpace("ConditionalNode")
         for hyperNodeKey,hyperNode in hyperNodes.items():
             if isinstance(hyperNode, HyperModel):
-                hyperNode.Name = hyperNodeKey
                 conditional_spaces.append_child(hyperNodeKey, hyperNode.get_searchspace())
             else:
                 continue
