@@ -10,11 +10,9 @@ def auto_space(value):
         return value
 
 class HyperLinear(HyperModel):
-    def __init__(self, name, n_output_nodes=None):
-        super(HyperLinear, self).__init__(name)
-        self.__searchspace = SearchSpace(self.__class__.__name__, self.Name, {
-            "nodes" : auto_space(n_output_nodes)
-        }) 
+    def __init__(self, n_output_nodes=None):
+        super(HyperLinear, self).__init__()
+        self.__n_output_nodes = n_output_nodes
 
     def materialize(self, individual, input_shape):
         self.layer = nn.Linear(input_shape[-1], individual["nodes"])
@@ -24,15 +22,15 @@ class HyperLinear(HyperModel):
         return self.layer(input_data)
 
     def get_searchspace(self):
-        return self.__searchspace
+        return SearchSpace(self.__class__.__name__, {
+            "nodes" : auto_space(self.__n_output_nodes)
+        }) 
 
 class HyperDropout(HyperModel):
-    def __init__(self, name):
-        super(HyperDropout, self).__init__(name)
-        self.__searchspace = SearchSpace(self.__class__.__name__, self.Name, {
-            "dropout_p" : None
-        })
-    
+    def __init__(self, p = None):
+        super(HyperDropout, self).__init__()
+        self.__dropout = auto_space(p)
+            
     def materialize(self, individual, input_shapes, torch_module_list=None):
         self.layer = nn.Dropout(individual["dropout_p"])
         return self
@@ -41,16 +39,16 @@ class HyperDropout(HyperModel):
         return self.layer(x)
 
     def get_searchspace(self):
-        return self.__searchspace
+        return SearchSpace(self.__class__.__name__, {
+            "dropout_p" : self.__dropout
+        })
 
 
 class HyperGaussNoise(HyperModel):
-    def __init__(self, name, sigma=None):
-        super(HyperGaussNoise, self).__init__(name)
+    def __init__(self, sigma_space=None):
+        super(HyperGaussNoise, self).__init__()
         self.__noise = torch.tensor(0,)
-        self.__searchspace = SearchSpace(self.__class__.__name__, self.Name, {
-            "sigma" : sigma
-        })
+        self.__sigma_space = auto_space(sigma_space)
         
     def materialize(self, individual, input_shapes, torch_module_list=None):
         self.__sigma = individual["sigma"]
@@ -65,11 +63,13 @@ class HyperGaussNoise(HyperModel):
         return x 
         
     def get_searchspace(self):
-        return self.__searchspace
+        return SearchSpace(self.__class__.__name__, {
+            "sigma" : self.__sigma_space
+        })
 
 class HyperNoOp(HyperModel):
-    def __init__(self, name):
-        super(HyperNoOp, self).__init__(name)
+    def __init__(self):
+        super(HyperNoOp, self).__init__()
     
     def materialize(self, individual, input_shapes, torch_module_list=None):
         return self
@@ -78,25 +78,26 @@ class HyperNoOp(HyperModel):
         return x 
         
     def get_searchspace(self):
-        return SearchSpace("NoOp", "NoOp")
+        return SearchSpace("NoOp")
 
 class HyperNodeSelector(HyperModel):
-    def __init__(self, name, hyperNodes : dict, default_key):
-        super(HyperNodeSelector, self).__init__(name)
+    def __init__(self, hyperNodes : dict, default_key):
+        super(HyperNodeSelector, self).__init__()
         self.__hyperNodes = hyperNodes
 
-        conditional_spaces = SearchSpace("ConditionalNode","spaces")
+        conditional_spaces = SearchSpace("ConditionalNode")
         for hyperNodeKey,hyperNode in hyperNodes.items():
             if isinstance(hyperNode, HyperModel):
+                hyperNode.Name = hyperNodeKey
                 conditional_spaces.append_child(hyperNodeKey, hyperNode.get_searchspace())
             else:
                 continue
 
-        self.__searchspace = SearchSpace(self.__class__.__name__, self.Name, {
+        self.__default_key = default_key
+        self.__searchspace_dict =  {
             "key" : OneOfSet([k for k in hyperNodes.keys()]),
             "spaces" : conditional_spaces
-        })
-        self.__default_key = default_key
+        }
 
     def materialize(self, individual, input_shapes, torch_module_list=None):
         selected_key = individual["key"]
@@ -111,4 +112,5 @@ class HyperNodeSelector(HyperModel):
         return self.active_node.forward(x)
         
     def get_searchspace(self):
-        return self.__searchspace
+        return SearchSpace(self.__class__.__name__, self.__searchspace_dict)
+

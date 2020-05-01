@@ -9,30 +9,30 @@ from functools import partial
 OPTIMIZATION_TRIALS = 25
 
 class MyTestModelSubModule(hypertorch.HyperModel):
-    def __init__(self, name):
-        super(MyTestModelSubModule, self).__init__(name)
-        self.hidden_layer = HyperLinear("sub_linear")
+    def __init__(self):
+        super(MyTestModelSubModule, self).__init__()
+        self.hidden_layer = HyperLinear()
 
     def forward(self, x):
         return self.hidden_layer(x)
 
 class MyTestModel(hypertorch.HyperModel):
     def __init__(self):
-        super(MyTestModel, self).__init__("root")
-        self.layer_a = MyTestModelSubModule("layer_a")
-        self.layer_a_noise = HyperGaussNoise("layer_a_noise")
+        super(MyTestModel, self).__init__()
+        self.layer_a = MyTestModelSubModule()
+        self.layer_a_noise = HyperGaussNoise()
         self.hidden_modules = [
-            self.add_module("layer_b", HyperLinear("layer_b", n_output_nodes=IntSpace(1,176)))
+            self.add_module("hidden#1", HyperLinear(n_output_nodes=IntSpace(1,176)))
         ]
-        self.layer_b_augmentation = HyperNodeSelector("layer_b_aug", {
-            "noop" : HyperNoOp("noop"),
-            "gauss" : HyperGaussNoise("gauss"),
-            "drop" : HyperDropout("drop")
+        self.layer_b_augmentation = HyperNodeSelector({
+            "noop" : HyperNoOp(),
+            "gauss" : HyperGaussNoise(),
+            "drop" : HyperDropout()
         }, default_key="noop")
-        self.layer_c = HyperLinear("layer_c", n_output_nodes=3)
+        self.layer_c = HyperLinear(n_output_nodes=3)
 
-        self.midpoint_activation = HyperNodeSelector("midpoint_activation_layer", { 
-            "nope" : HyperNoOp("nope"),
+        self.midpoint_activation = HyperNodeSelector({ 
+            "nope" : HyperNoOp(),
             "relu" : torch.nn.ReLU(),
             "elu" : torch.nn.ELU()
         }, default_key = "nope")

@@ -68,9 +68,8 @@ class NullSpace(object):
     pass
 
 class SearchSpace(object):
-    def __init__(self, type_key, key, ss_dict=None):
+    def __init__(self, type_key, ss_dict=None):
         self.__type_key = type_key
-        self._key = key
         self._searchspace_dict = ss_dict or dict()
         self.type_key = type_key
 
@@ -170,9 +169,9 @@ class MaterializedModel(torch.nn.Module):
 class HyperModel(object):
     materializing_hack = False
 
-    def __init__(self, name):
+    def __init__(self):
         super(HyperModel, self).__init__()
-        self.__name = name
+        self.__name = None
         self.training = True
         self.modules = []
         pass
@@ -185,7 +184,14 @@ class HyperModel(object):
 
     @property
     def Name(self):
+        raise Exception("remove name variable? what??")
+        if self.__name is None: raise Exception("Name of module is not set", self)
         return self.__name
+    
+    @Name.setter
+    def Name(self, value):
+        self.__name = value
+    
     
     def train(self, mode):
         self.training = mode
@@ -199,8 +205,15 @@ class HyperModel(object):
         return self.forward(x)
 
     def add_module(self, key, module):
+        module.Name = key
         self.modules.append((key,module))
         return module
+
+    def __recursive_apply_variable_name(self):
+        for (var_name,hypermodel) in self.__get_hyper_models():
+            hypermodel.__name = var_name
+            hypermodel.__recursive_apply_variable_name()
+
 
     def materialize(self, individual : Individual, input_shapes, torch_module_list=None) -> MaterializedModel:
         """ Turn this higher order model into a regular torch.Module """
@@ -209,6 +222,8 @@ class HyperModel(object):
         if is_root:
             material_self = copy.deepcopy(self)
             HyperModel.materializing_hack = True
+            self.__recursive_apply_variable_name()
+            self.__name = "root"
         else:
             material_self = self
 
@@ -231,7 +246,7 @@ class HyperModel(object):
 
         def materializing_forward(individual, variable_name, hyper_model_instance, original_forward, data):
             if hyper_model_instance.ismaterializing == True:
-                tmp = hyper_model_instance.materialize(individual.get(hyper_model_instance.Name,None), data_to_shape(data))
+                tmp = hyper_model_instance.materialize(individual.get(variable_name,None), data_to_shape(data))
                 if isinstance(tmp, torch.nn.Module):
                     torch_module_list.append((variable_name,tmp))
                 else:
@@ -261,25 +276,26 @@ class HyperModel(object):
 
     def get_searchspace(self, default_layer_searchspace = DefaultLayerSpace):
         """ Return a representation of the searchspace of the model """
+        self.__recursive_apply_variable_name()
 
         def rec_merge_space(searchspace, default_searchspace, path=""):
             default_value = default_searchspace.get(searchspace.type_key, searchspace)
             for key,value in searchspace._searchspace_dict.items():
                 if isinstance(value, SearchSpace):
-                    value = rec_merge_space(value, default_searchspace, "{}/{}".format(path,searchspace._key))
+                    value = rec_merge_space(value, default_searchspace, "{}/{}".format(path,key))
                 elif value is None: value = default_value.get(key,None)
-                if value is None: raise Exception("Undefined searchspace on {}/{}#{}".format(path, searchspace.type_key, searchspace._key))
+                if value is None: raise Exception("Undefined searchspace on {}/{}#{}".format(path, searchspace.type_key, key))
                 searchspace._searchspace_dict[key] = value
             return searchspace
 
 
         # Build the searchspace from all underlying hyper models
-        ss = SearchSpace(self.__class__.__name__, self.__name)
+        ss = SearchSpace(self.__class__.__name__)
         hyper_models = self.__get_hyper_models() # [var for var in vars(self).items() if isinstance(var[1], HyperModel)]
         for key,value in hyper_models:
             childss = value.get_searchspace()
             if childss != None: 
-                ss.append_child(value.Name, childss)
+                ss.append_child(key, childss)
 
         # Merge with default searchspace per layer (where value is Null -> failover to default space)
         ss = rec_merge_space(ss, default_layer_searchspace, "..")

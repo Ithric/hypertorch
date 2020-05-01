@@ -7,10 +7,10 @@ Start by defining the model:
 ```python
 class MyTestModel(hyper.HyperModel):
     def __init__(self):
-        super(MyTestModel, self).__init__("root")
-        self.layer_a = HyperLinear("layer_a")
-        self.layer_b = HyperLinear("layer_b")
-        self.layer_c = HyperLinear("layer_c", n_output_nodes=1)
+        super(MyTestModel, self).__init__()
+        self.layer_a = HyperLinear()
+        self.layer_b = HyperLinear()
+        self.layer_c = HyperLinear(n_output_nodes=1)
         pass
 
     def forward(self, x):
