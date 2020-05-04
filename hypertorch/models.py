@@ -237,7 +237,7 @@ class HyperModel(object):
                 if isinstance(tmp, torch.nn.Module):
                     torch_module_list.append((variable_name,tmp))
                 else:
-                    torch_module_list.extend(tmp.__get_torch_modules())
+                    raise Exception("Materialization of {}:{} did not return a torch.nn.Module".format(variable_name, hyper_model_instance))
 
                 return original_forward(data)
             else:

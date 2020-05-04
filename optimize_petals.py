@@ -11,10 +11,16 @@ OPTIMIZATION_TRIALS = 25
 class MyTestModelSubModule(hypertorch.HyperModel):
     def __init__(self):
         super(MyTestModelSubModule, self).__init__()
-        self.hidden_layer = HyperLinear()
+        self.hidden_layer_a = HyperLinear()
+        self.hidden_layer_b = HyperNodeSelector({
+            "noop" : HyperNoOp(),
+            "linear" : HyperLinear()
+        }, default_key="linear") 
 
     def forward(self, x):
-        return self.hidden_layer(x)
+        y = self.hidden_layer_a(x)
+        y = self.hidden_layer_b(y)
+        return y
 
 class MyTestModel(hypertorch.HyperModel):
     def __init__(self):

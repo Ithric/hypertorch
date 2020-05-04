@@ -1,4 +1,4 @@
-from hypertorch.models import HyperModel, SearchSpace, NullSpace
+from hypertorch.models import HyperModel, SearchSpace, NullSpace, MaterializedModel
 from hypertorch.searchspaceprimitives import *
 import torch
 from torch import nn
@@ -16,7 +16,7 @@ class HyperLinear(HyperModel):
 
     def materialize(self, individual, input_shape):
         self.layer = nn.Linear(input_shape[-1], individual["nodes"])
-        return self
+        return self.layer
         
     def forward(self, input_data):
         return self.layer(input_data)
@@ -33,7 +33,7 @@ class HyperDropout(HyperModel):
             
     def materialize(self, individual, input_shapes, torch_module_list=None):
         self.layer = nn.Dropout(individual["dropout_p"])
-        return self
+        return self.layer
 
     def forward(self, x):
         return self.layer(x)
@@ -44,6 +44,7 @@ class HyperDropout(HyperModel):
         })
 
 
+
 class HyperGaussNoise(HyperModel):
     def __init__(self, sigma_space=None):
         super(HyperGaussNoise, self).__init__()
@@ -52,7 +53,7 @@ class HyperGaussNoise(HyperModel):
         
     def materialize(self, individual, input_shapes, torch_module_list=None):
         self.__sigma = individual["sigma"]
-        return self
+        return MaterializedModel(self, [])
 
     def forward(self, x):
         self.__noise = self.__noise.to(x.device)
@@ -72,7 +73,7 @@ class HyperNoOp(HyperModel):
         super(HyperNoOp, self).__init__()
     
     def materialize(self, individual, input_shapes, torch_module_list=None):
-        return self
+        return MaterializedModel(self, [])
 
     def forward(self, x):
         return x 
@@ -103,9 +104,10 @@ class HyperNodeSelector(HyperModel):
         if selected_key == "default_key": selected_key = self.__default_key
         if isinstance(self.__hyperNodes[selected_key], HyperModel):
             self.active_node = self.__hyperNodes[selected_key].materialize(individual["spaces"][selected_key], input_shapes)
+            assert isinstance(self.active_node, torch.nn.Module), "Materialization failed of node with key: {}: Got {}".format(selected_key, self.active_node)
         else:
             self.active_node = self.__hyperNodes[selected_key]
-        return self
+        return self.active_node
 
     def forward(self, x):
         return self.active_node.forward(x)
