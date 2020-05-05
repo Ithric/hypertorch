@@ -84,7 +84,7 @@ class SearchSpace(object):
                     output.append("{}\"{}\": {}".format(indent, key, item))
             return ",\n".join(output)
 
-        return "\"{}#{}\"".format(self.__type_key, self._key) + " : {\n" + recPrintSearchSpace(self, indent="  ") + "\n}"
+        return "\"{}#{}\"".format(self.__type_key, "root") + " : {\n" + recPrintSearchSpace(self, indent="  ") + "\n}"
 
     def append_child(self, key, ss):
         self._searchspace_dict[key] = ss
