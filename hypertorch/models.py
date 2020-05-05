@@ -105,7 +105,6 @@ class SearchSpace(object):
 
                 elif left is not None:
                     if isinstance(left, SearchSpace): key_values[key] = rec_collapse_searchspace(left)
-                    elif isinstance(left, SearchSpacePrimitive): key_values[key] = left
                     else: raise Exception("Unknown left type: {}".format(left))
 
                 elif right is not None:
