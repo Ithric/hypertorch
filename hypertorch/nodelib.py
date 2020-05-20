@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 def auto_space(value):
-    if isinstance(value, (float,int)):
+    if isinstance(value, (str,float,int)):
         return NoSpace(value)
     else:
         return value
