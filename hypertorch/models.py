@@ -61,6 +61,8 @@ class Individual(object):
         self.__individual[index] = value
 
     def get(self, key, default_value=None):
+        if key not in self.__individual and default_value == None:
+            raise Exception("Individual does not contain key: {}".format(key))
         return self.__individual.get(key, default_value)
 
 
