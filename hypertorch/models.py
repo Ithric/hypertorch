@@ -235,7 +235,7 @@ class HyperModel(object):
         def materializing_forward(individual, variable_name, hyper_model_instance, original_forward, data):
             if hyper_model_instance.ismaterializing == True:
                 indvar = individual.get(variable_name,None)
-                if indvar == None: raise Exception("Individual does not contain key: {}".format(key))
+                if indvar == None: raise Exception("Individual does not contain key: {}".format(variable_name))
                 tmp = hyper_model_instance.materialize(indvar, data_to_shape(data))
                 tmp.eval()
                 if isinstance(tmp, torch.nn.Module):
