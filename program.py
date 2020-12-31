@@ -14,23 +14,22 @@ class MyTestModelSubModule(hypertorch.HyperModel):
         super(MyTestModelSubModule, self).__init__()
         self.hidden_layer = HyperLinear()
 
-    def forward(self, x):
-        return self.hidden_layer(x)
+    def forward(self, x, test_scalar):
+        return self.hidden_layer(x)*test_scalar
 
 class MyTestModel(hypertorch.HyperModel):
     def __init__(self):
         super(MyTestModel, self).__init__(debug_name="MyTestModel")
         # self.layer_a = HyperLinear(name="layer_a")
         self.layer_a = HyperLinear()
-        self.layer_b = HyperLinear()
+        self.layer_b = MyTestModelSubModule()
         self.layer_c = HyperLinear(n_output_nodes=1)
         pass
 
     def forward(self, x):
-        print("My test model x.device=",[kx.device for kx in x])
         y = self.layer_a(x[0])
-        y = self.layer_b(y)
-        y = self.layer_b(y)
+        y = self.layer_b(y, test_scalar=1.1)
+        y = self.layer_b(y, test_scalar=0.9)
         y = self.layer_c(y)
         return y
 

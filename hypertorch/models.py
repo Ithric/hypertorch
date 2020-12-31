@@ -192,8 +192,8 @@ class HyperModel(object):
     def forward(self, x):
         pass
 
-    def __call__(self, x):
-        return self.forward(x)
+    def __call__(self, x, **kwargs):
+        return self.forward(x, **kwargs)
 
     def add_module(self, key, module):
         self.modules.append((key,module))
@@ -204,7 +204,7 @@ class HyperModel(object):
             hypermodel.__name = var_name
             hypermodel.__recursive_apply_variable_name()
 
-    def materialize(self, individual : Individual, input_shapes, torch_module_list=None) -> MaterializedModel:
+    def materialize(self, individual : Individual, input_shapes, torch_module_list=None, forward_ext_args=None) -> MaterializedModel:
         """ Turn this higher order model into a regular torch.Module """
         torch_module_list = torch_module_list or []
         is_root = HyperModel.materializing_hack == False
@@ -232,23 +232,23 @@ class HyperModel(object):
                 return torch.from_numpy(np.zeros((1,)+input_shapes, dtype=np.float32))
                 
 
-        def materializing_forward(state, individual, variable_name, hyper_model_instance, original_forward, data):
-            if variable_name in state: return original_forward(data)
+        def materializing_forward(state, individual, variable_name, hyper_model_instance, original_forward, data, **kwargs):
+            if variable_name in state: return original_forward(data, **kwargs)
             else: state[variable_name] = "bound"
 
             if hyper_model_instance.ismaterializing == True:
                 indvar = individual.get(variable_name,None)
                 if indvar == None: raise Exception("Individual does not contain key: {}".format(variable_name))
-                tmp = hyper_model_instance.materialize(indvar, data_to_shape(data))
+                tmp = hyper_model_instance.materialize(indvar, data_to_shape(data), forward_ext_args=kwargs)
                 tmp.eval()
                 if isinstance(tmp, torch.nn.Module):
                     torch_module_list.append((variable_name,tmp))
                 else:
                     raise Exception("Materialization of {}:{} did not return a torch.nn.Module".format(variable_name, hyper_model_instance))
 
-                return original_forward(data)
+                return original_forward(data, **kwargs)
             else:
-                return original_forward(data)
+                return original_forward(data, **kwargs)
 
         binding_state = {}
         for variable_name,hyper_model in material_self.__get_hyper_models():
@@ -260,7 +260,7 @@ class HyperModel(object):
 
         # Perform a materializing forward
         fake_data = shapes_to_sampledata(input_shapes)
-        material_self.original_forward(fake_data)
+        material_self.original_forward(fake_data, **(forward_ext_args or {}))
 
         # Disable materialization
         for _,hyper_model in material_self.__get_hyper_models():
