@@ -170,10 +170,11 @@ class MaterializedModel(torch.nn.Module):
 class HyperModel(object):
     materializing_hack = False
 
-    def __init__(self):
+    def __init__(self, debug_name=None):
         super(HyperModel, self).__init__()
         self.training = True
         self.modules = []
+        self.debug_name = debug_name or str(type(self))
         pass
     
     def __get_hyper_models(self):
@@ -203,7 +204,6 @@ class HyperModel(object):
             hypermodel.__name = var_name
             hypermodel.__recursive_apply_variable_name()
 
-
     def materialize(self, individual : Individual, input_shapes, torch_module_list=None) -> MaterializedModel:
         """ Turn this higher order model into a regular torch.Module """
         torch_module_list = torch_module_list or []
@@ -232,7 +232,10 @@ class HyperModel(object):
                 return torch.from_numpy(np.zeros((1,)+input_shapes, dtype=np.float32))
                 
 
-        def materializing_forward(individual, variable_name, hyper_model_instance, original_forward, data):
+        def materializing_forward(state, individual, variable_name, hyper_model_instance, original_forward, data):
+            if variable_name in state: return original_forward(data)
+            else: state[variable_name] = "bound"
+
             if hyper_model_instance.ismaterializing == True:
                 indvar = individual.get(variable_name,None)
                 if indvar == None: raise Exception("Individual does not contain key: {}".format(variable_name))
@@ -247,10 +250,11 @@ class HyperModel(object):
             else:
                 return original_forward(data)
 
+        binding_state = {}
         for variable_name,hyper_model in material_self.__get_hyper_models():
             if not hasattr(hyper_model, "original_forward"): 
                 hyper_model.original_forward = hyper_model.forward
-                hyper_model.forward = partial(materializing_forward, individual, variable_name, hyper_model, hyper_model.forward)
+                hyper_model.forward = partial(materializing_forward, binding_state, individual, variable_name, hyper_model, hyper_model.forward)
 
             hyper_model.ismaterializing = True
 
