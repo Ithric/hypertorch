@@ -9,6 +9,15 @@ import hypertorch
 from hypertorch.nodelib import *
 from hypertorch.searchspaceprimitives import *
 
+class BasicModuleTest(torch.nn.Module):
+    def __init__(self):
+        super(BasicModuleTest,self).__init__()
+        self.layer = torch.nn.Linear(64,64)
+        pass
+
+    def forward(self,x):
+        return self.layer(x)
+
 class MyTestModelSubModule(hypertorch.HyperModel):
     def __init__(self):
         super(MyTestModelSubModule, self).__init__()
@@ -23,6 +32,7 @@ class MyTestModel(hypertorch.HyperModel):
         # self.layer_a = HyperLinear(name="layer_a")
         self.layer_a = HyperLinear()
         self.layer_b = MyTestModelSubModule()
+        self.layer_bb = BasicModuleTest()
         self.layer_c = HyperLinear(n_output_nodes=1)
         pass
 
@@ -30,6 +40,7 @@ class MyTestModel(hypertorch.HyperModel):
         y = self.layer_a(x[0])
         y = self.layer_b(y, test_scalar=1.1)
         y = self.layer_b(y, test_scalar=0.9)
+        y = self.layer_bb(y)
         y = self.layer_c(y)
         return y
 
@@ -48,6 +59,7 @@ individual = searchspace.default_individual()
 # materialize and test the model
 test_model = hyper_model.materialize(individual, [kx.shape[1:] for kx in inputs])
 test_model = test_model.to("cuda")
+
 prediction = test_model([x.to("cuda") for x in inputs])
 print("Prediction:", prediction, prediction.shape)
 exit(1)

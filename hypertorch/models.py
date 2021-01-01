@@ -262,6 +262,10 @@ class HyperModel(object):
         fake_data = shapes_to_sampledata(input_shapes)
         material_self.original_forward(fake_data, **(forward_ext_args or {}))
 
+        # Add torch modules too!
+        for torch_module in material_self.__get_torch_modules():
+            torch_module_list.append(torch_module)
+
         # Disable materialization
         for _,hyper_model in material_self.__get_hyper_models():
             hyper_model.ismaterializing = False
