@@ -64,7 +64,17 @@ class Individual(object):
         return self.__individual.get(key, default_value)
     
     def as_dict(self):
-        return self.__individual
+
+        def rec_as_dict(d):
+            output = []
+            for key,item in d.__individual.items():
+                if isinstance(item,Individual): 
+                    output.append((key,rec_as_dict(item)))
+                else: 
+                    output.append((key,item))
+            return dict(output)
+                
+        return rec_as_dict(self)
 
 
 class NullSpace(object):
