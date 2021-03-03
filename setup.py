@@ -2,7 +2,7 @@ from distutils.core import setup
 
 setup(
     name="hypertorch",
-    version="0.1.2",
+    version="0.1.3",
     packages=["hypertorch"],
     license="MIT License",
     depends=["torch","numpy","toolz"],
