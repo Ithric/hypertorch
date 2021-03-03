@@ -62,8 +62,7 @@ class Individual(object):
 
     def get(self, key, default_value=None):
         return self.__individual.get(key, default_value)
-
-    @property
+    
     def as_dict(self):
         return self.__individual
 
