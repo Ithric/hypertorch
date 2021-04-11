@@ -120,6 +120,7 @@ class SearchSpace(object):
                     if isinstance(left, SearchSpace): key_values[key] = rec_collapse_searchspace(left)
                     elif isinstance(left, FloatSpace) and left.default is not None: key_values[key] = left.default
                     elif isinstance(left, IntSpace) and left.default is not None: key_values[key] = left.default
+                    elif isinstance(left, NoSpace): key_values[key] = left.exact_value
                     else: raise Exception("Unknown left type: {}, key={}".format(left, key))
 
                 elif right is not None:
