@@ -49,7 +49,13 @@ class MyTestModel(hypertorch.HyperModel):
 
 inputs = [torch.from_numpy(np.random.uniform(size=(12,4,6)).astype(np.float32))]
 hyper_model = MyTestModel()
-searchspace = hyper_model.get_searchspace()
+
+extraspace = {
+    "HyperLinear" : { "nodes" : hypertorch.searchspaceprimitives.IntSpace(1,350) }
+}
+searchspace = hyper_model.get_searchspace(default_layer_searchspace={ **hypertorch.DefaultLayerSpace, **extraspace} )
+print(searchspace)
+exit(1)
 individual = searchspace.default_individual()
 
 # individual = hyper.Individual.coalesce(individual, hyper.Individual.parse({

@@ -21,7 +21,7 @@ class HyperLinear(HyperModel):
     def forward(self, input_data):
         return self.layer(input_data)
 
-    def get_searchspace(self):
+    def get_searchspace(self, **kwargs):
         return SearchSpace(self.__class__.__name__, {
             "nodes" : auto_space(self.__n_output_nodes)
         }) 
@@ -38,7 +38,7 @@ class HyperDropout(HyperModel):
     def forward(self, x):
         return self.layer(x)
 
-    def get_searchspace(self):
+    def get_searchspace(self, **kwargs):
         return SearchSpace(self.__class__.__name__, {
             "dropout_p" : self.__dropout
         })
@@ -63,7 +63,7 @@ class HyperGaussNoise(HyperModel):
         
         return x 
         
-    def get_searchspace(self):
+    def get_searchspace(self, **kwargs):
         return SearchSpace(self.__class__.__name__, {
             "sigma" : self.__sigma_space
         })
@@ -78,7 +78,7 @@ class HyperNoOp(HyperModel):
     def forward(self, x):
         return x 
         
-    def get_searchspace(self):
+    def get_searchspace(self, **kwargs):
         return SearchSpace("NoOp")
 
 class HyperNodeSelector(HyperModel):
@@ -112,6 +112,6 @@ class HyperNodeSelector(HyperModel):
     def forward(self, x):
         return self.active_node.forward(x)
         
-    def get_searchspace(self):
+    def get_searchspace(self, **kwargs):
         return SearchSpace(self.__class__.__name__, self.__searchspace_dict)
 

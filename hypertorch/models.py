@@ -6,6 +6,7 @@ from hypertorch import searchspaceprimitives
 from hypertorch.constants import *
 
 
+
 class Individual(object):
     def __init__(self, individual_dict):
         self.__individual = individual_dict
@@ -289,6 +290,8 @@ class HyperModel(object):
         if is_root == True: HyperModel.materializing_hack = False
         return MaterializedModel(material_self, torch_module_list)
 
+    
+
     def get_searchspace(self, default_layer_searchspace = DefaultLayerSpace):
         """ Return a representation of the searchspace of the model """
         self.__recursive_apply_variable_name()
@@ -308,7 +311,7 @@ class HyperModel(object):
         ss = SearchSpace(self.__class__.__name__)
         hyper_models = self.__get_hyper_models() # [var for var in vars(self).items() if isinstance(var[1], HyperModel)]
         for key,value in hyper_models:
-            childss = value.get_searchspace()
+            childss = value.get_searchspace(default_layer_searchspace=default_layer_searchspace)
             if childss != None: 
                 ss.append_child(key, childss)
 
