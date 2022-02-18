@@ -61,9 +61,20 @@ class Individual(object):
         self.__individual[index] = value
 
     def get(self, key, default_value=None):
-        if key not in self.__individual and default_value == None:
-            raise Exception("Individual does not contain key: {}".format(key))
         return self.__individual.get(key, default_value)
+    
+    def as_dict(self):
+
+        def rec_as_dict(d):
+            output = []
+            for key,item in d.__individual.items():
+                if isinstance(item,Individual): 
+                    output.append((key,rec_as_dict(item)))
+                else: 
+                    output.append((key,item))
+            return dict(output)
+                
+        return rec_as_dict(self)
 
 
 class NullSpace(object):
@@ -108,6 +119,8 @@ class SearchSpace(object):
                 elif left is not None:
                     if isinstance(left, SearchSpace): key_values[key] = rec_collapse_searchspace(left)
                     elif isinstance(left, FloatSpace) and left.default is not None: key_values[key] = left.default
+                    elif isinstance(left, IntSpace) and left.default is not None: key_values[key] = left.default
+                    elif isinstance(left, NoSpace): key_values[key] = left.exact_value
                     else: raise Exception("Unknown left type: {}, key={}".format(left, key))
 
                 elif right is not None:
@@ -172,10 +185,11 @@ class MaterializedModel(torch.nn.Module):
 class HyperModel(object):
     materializing_hack = False
 
-    def __init__(self):
+    def __init__(self, debug_name=None):
         super(HyperModel, self).__init__()
         self.training = True
         self.modules = []
+        self.debug_name = debug_name or str(type(self))
         pass
     
     def __get_hyper_models(self):
@@ -193,8 +207,8 @@ class HyperModel(object):
     def forward(self, x):
         pass
 
-    def __call__(self, x):
-        return self.forward(x)
+    def __call__(self, x, **kwargs):
+        return self.forward(x, **kwargs)
 
     def add_module(self, key, module):
         self.modules.append((key,module))
@@ -206,27 +220,31 @@ class HyperModel(object):
             hypermodel.__recursive_apply_variable_name()
 
 
-    def __materializing_forward(self, torch_module_list, individual, variable_name, hyper_model_instance, original_forward, data):
+    def __materializing_forward(self, torch_module_list, state, individual, variable_name, hyper_model_instance, original_forward, data, **kwargs):
         def data_to_shape(data):
             if isinstance(data, (tuple,list)):
                 return [d.shape[1:] for d in data]
             else:
                 return data.shape[1:]
 
+        if variable_name in state: return original_forward(data, **kwargs)
+        else: state[variable_name] = "bound"
+
         if hyper_model_instance.ismaterializing == True:
-            tmp = hyper_model_instance.materialize(individual.get(variable_name,None), data_to_shape(data))
+            indvar = individual.get(variable_name,None)
+            if indvar == None: raise Exception("Individual does not contain key: {}".format(variable_name))
+            tmp = hyper_model_instance.materialize(indvar, data_to_shape(data), forward_ext_args=kwargs)
             tmp.eval()
             if isinstance(tmp, torch.nn.Module):
                 torch_module_list.append((variable_name,tmp))
             else:
                 raise Exception("Materialization of {}:{} did not return a torch.nn.Module".format(variable_name, hyper_model_instance))
 
-            return original_forward(data)
+            return original_forward(data, **kwargs)
         else:
-            return original_forward(data)
+            return original_forward(data, **kwargs)
 
-
-    def materialize(self, individual : Individual, input_shapes, torch_module_list=None) -> MaterializedModel:
+    def materialize(self, individual : Individual, input_shapes, torch_module_list=None, forward_ext_args=None) -> MaterializedModel:
         """ Turn this higher order model into a regular torch.Module """
         torch_module_list = torch_module_list or []
         is_root = HyperModel.materializing_hack == False
@@ -241,23 +259,28 @@ class HyperModel(object):
         if not hasattr(material_self, "original_forward"): 
             material_self.original_forward = material_self.forward
 
-        
+
         def shapes_to_sampledata(shapes):
             if isinstance(input_shapes, (tuple,list)) and not isinstance(input_shapes, torch.Size):
                 return [torch.from_numpy(np.zeros((1,)+shape, dtype=np.float32)) for shape in input_shapes]
             else:
                 return torch.from_numpy(np.zeros((1,)+input_shapes, dtype=np.float32))
 
+        binding_state = {}
         for variable_name,hyper_model in material_self.__get_hyper_models():
             if not hasattr(hyper_model, "original_forward"): 
                 hyper_model.original_forward = hyper_model.forward
-                hyper_model.forward = partial(self.__materializing_forward, torch_module_list, individual, variable_name, hyper_model, hyper_model.forward)
+                hyper_model.forward = partial(self.__materializing_forward, torch_module_list, binding_state, individual, variable_name, hyper_model, hyper_model.forward)
 
             hyper_model.ismaterializing = True
 
         # Perform a materializing forward
         fake_data = shapes_to_sampledata(input_shapes)
-        material_self.original_forward(fake_data)
+        material_self.original_forward(fake_data, **(forward_ext_args or {}))
+
+        # Add torch modules too!
+        for torch_module in material_self.__get_torch_modules():
+            torch_module_list.append(torch_module)
 
         # Disable materialization
         for _,hyper_model in material_self.__get_hyper_models():
