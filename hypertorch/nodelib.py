@@ -14,7 +14,7 @@ class HyperLinear(HyperModel):
         super(HyperLinear, self).__init__()
         self.__n_output_nodes = n_output_nodes
 
-    def materialize(self, individual, input_shape):
+    def materialize(self, individual, input_shape, **kwargs):
         self.layer = nn.Linear(input_shape[-1], individual["nodes"])
         return self.layer
         
@@ -31,7 +31,7 @@ class HyperDropout(HyperModel):
         super(HyperDropout, self).__init__()
         self.__dropout = auto_space(p)
             
-    def materialize(self, individual, input_shapes, torch_module_list=None):
+    def materialize(self, individual, input_shapes, torch_module_list=None, **kwargs):
         self.layer = nn.Dropout(individual["dropout_p"])
         return self.layer
 
@@ -51,7 +51,7 @@ class HyperGaussNoise(HyperModel):
         self.__noise = torch.tensor(0,)
         self.__sigma_space = auto_space(sigma_space)
         
-    def materialize(self, individual, input_shapes, torch_module_list=None):
+    def materialize(self, individual, input_shapes, torch_module_list=None, **kwargs):
         self.__sigma = individual["sigma"]
         return MaterializedModel(self, [])
 
@@ -72,7 +72,7 @@ class HyperNoOp(HyperModel):
     def __init__(self):
         super(HyperNoOp, self).__init__()
     
-    def materialize(self, individual, input_shapes, torch_module_list=None):
+    def materialize(self, individual, input_shapes, torch_module_list=None, **kwargs):
         return MaterializedModel(self, [])
 
     def forward(self, x):
@@ -99,7 +99,7 @@ class HyperNodeSelector(HyperModel):
             "spaces" : conditional_spaces
         }
 
-    def materialize(self, individual, input_shapes, torch_module_list=None):
+    def materialize(self, individual, input_shapes, torch_module_list=None, **kwargs):
         selected_key = individual["key"]
         if selected_key == "default_key": selected_key = self.__default_key
         if isinstance(self.__hyperNodes[selected_key], HyperModel):
