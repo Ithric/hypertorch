@@ -206,6 +206,26 @@ class HyperModel(object):
             hypermodel.__recursive_apply_variable_name()
 
 
+    def __materializing_forward(self, torch_module_list, individual, variable_name, hyper_model_instance, original_forward, data):
+        def data_to_shape(data):
+            if isinstance(data, (tuple,list)):
+                return [d.shape[1:] for d in data]
+            else:
+                return data.shape[1:]
+
+        if hyper_model_instance.ismaterializing == True:
+            tmp = hyper_model_instance.materialize(individual.get(variable_name,None), data_to_shape(data))
+            tmp.eval()
+            if isinstance(tmp, torch.nn.Module):
+                torch_module_list.append((variable_name,tmp))
+            else:
+                raise Exception("Materialization of {}:{} did not return a torch.nn.Module".format(variable_name, hyper_model_instance))
+
+            return original_forward(data)
+        else:
+            return original_forward(data)
+
+
     def materialize(self, individual : Individual, input_shapes, torch_module_list=None) -> MaterializedModel:
         """ Turn this higher order model into a regular torch.Module """
         torch_module_list = torch_module_list or []
@@ -221,36 +241,17 @@ class HyperModel(object):
         if not hasattr(material_self, "original_forward"): 
             material_self.original_forward = material_self.forward
 
-        def data_to_shape(data):
-            if isinstance(data, (tuple,list)):
-                return [d.shape[1:] for d in data]
-            else:
-                return data.shape[1:]
-
+        
         def shapes_to_sampledata(shapes):
             if isinstance(input_shapes, (tuple,list)) and not isinstance(input_shapes, torch.Size):
                 return [torch.from_numpy(np.zeros((1,)+shape, dtype=np.float32)) for shape in input_shapes]
             else:
                 return torch.from_numpy(np.zeros((1,)+input_shapes, dtype=np.float32))
-                
-
-        def materializing_forward(individual, variable_name, hyper_model_instance, original_forward, data):
-            if hyper_model_instance.ismaterializing == True:
-                tmp = hyper_model_instance.materialize(individual.get(variable_name,None), data_to_shape(data))
-                tmp.eval()
-                if isinstance(tmp, torch.nn.Module):
-                    torch_module_list.append((variable_name,tmp))
-                else:
-                    raise Exception("Materialization of {}:{} did not return a torch.nn.Module".format(variable_name, hyper_model_instance))
-
-                return original_forward(data)
-            else:
-                return original_forward(data)
 
         for variable_name,hyper_model in material_self.__get_hyper_models():
             if not hasattr(hyper_model, "original_forward"): 
                 hyper_model.original_forward = hyper_model.forward
-                hyper_model.forward = partial(materializing_forward, individual, variable_name, hyper_model, hyper_model.forward)
+                hyper_model.forward = partial(self.__materializing_forward, torch_module_list, individual, variable_name, hyper_model, hyper_model.forward)
 
             hyper_model.ismaterializing = True
 
