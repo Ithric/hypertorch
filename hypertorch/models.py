@@ -262,12 +262,13 @@ class HyperModel(object):
         if not hasattr(material_self, "original_forward"): 
             material_self.original_forward = material_self.forward
 
-        def is_complex_type(a):
+        def is_complex_subtype(a):
+            if len(a) == 0: return True
             return isinstance(a[0], (list,tuple,dict))
 
         def shapes_to_sampledata(shape_struct):
             if isinstance(shape_struct, (tuple,list)):                
-                if is_complex_type(shape_struct):
+                if is_complex_subtype(shape_struct):
                     return list(map(shapes_to_sampledata, shape_struct))
                 else:
                     return torch.from_numpy(np.zeros((1,)+shape_struct, dtype=np.float32))
