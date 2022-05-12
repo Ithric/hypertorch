@@ -41,7 +41,7 @@ class MyTestModel(hypertorch.HyperModel):
 
     def forward(self, x : dict):
         y = self.layer_a(x[0])
-        y = self.layer_b({ "test" : y, "fakeerr": []}, test_scalar=1.1)
+        y = self.layer_b({ "test" : y, "fakeerr": [], "fakeerr2" : None}, test_scalar=1.1)
         y = self.layer_bb([y])
         y = self.layer_c(y)
         return y

@@ -225,8 +225,10 @@ class HyperModel(object):
         def data_to_shape(data):
             if isinstance(data, (tuple,list)):
                 return [d.shape[1:] for d in data]
-            if isinstance(data, dict):
+            elif isinstance(data, dict):
                 return dict([(key,data_to_shape(val)) for key,val in data.items()])
+            elif data is None:
+                return None
             else:
                 return data.shape[1:]
 
@@ -274,6 +276,8 @@ class HyperModel(object):
                     return torch.from_numpy(np.zeros((1,)+shape_struct, dtype=np.float32))
             elif isinstance(shape_struct, dict):
                 return dict([(k,shapes_to_sampledata(v)) for k,v in shape_struct.items()])
+            elif shape_struct is None:
+                return None
             else:
                 print("Unknown type:", type(shape_struct))
                 print(shape_struct)
