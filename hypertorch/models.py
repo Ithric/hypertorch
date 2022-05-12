@@ -225,6 +225,8 @@ class HyperModel(object):
         def data_to_shape(data):
             if isinstance(data, (tuple,list)):
                 return [d.shape[1:] for d in data]
+            if isinstance(data, dict):
+                return dict([(key,data_to_shape(val)) for key,val in data.items()])
             else:
                 return data.shape[1:]
 
@@ -260,12 +262,28 @@ class HyperModel(object):
         if not hasattr(material_self, "original_forward"): 
             material_self.original_forward = material_self.forward
 
+        def is_complex_type(a):
+            return isinstance(a[0], (list,tuple,dict))
 
-        def shapes_to_sampledata(shapes):
-            if isinstance(input_shapes, (tuple,list)) and not isinstance(input_shapes, torch.Size):
-                return [torch.from_numpy(np.zeros((1,)+shape, dtype=np.float32)) for shape in input_shapes]
+        def shapes_to_sampledata(shape_struct):
+            if isinstance(shape_struct, (tuple,list)):                
+                if is_complex_type(shape_struct):
+                    return list(map(shapes_to_sampledata, shape_struct))
+                else:
+                    return torch.from_numpy(np.zeros((1,)+shape_struct, dtype=np.float32))
+            elif isinstance(shape_struct, dict):
+                return dict([(k,shapes_to_sampledata(v)) for k,v in shape_struct.items()])
             else:
-                return torch.from_numpy(np.zeros((1,)+input_shapes, dtype=np.float32))
+                print("Unknown type:", type(shape_struct))
+                print(shape_struct)
+                exit(1)
+
+
+        # def shapes_to_sampledata(shapes):
+        #     if isinstance(input_shapes, (tuple,list)) and not isinstance(input_shapes, torch.Size):
+        #         return [torch.from_numpy(np.zeros((1,)+shape, dtype=np.float32)) for shape in input_shapes]
+        #     else:
+        #         return torch.from_numpy(np.zeros((1,)+input_shapes, dtype=np.float32))
 
         binding_state = {}
         for variable_name,hyper_model in material_self.__get_hyper_models():

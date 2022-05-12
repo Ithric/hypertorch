@@ -16,15 +16,18 @@ class BasicModuleTest(torch.nn.Module):
         pass
 
     def forward(self,x):
-        return self.layer(x)
+        assert len(x) == 1, "x is wrong length"
+        return self.layer(x[0])
 
 class MyTestModelSubModule(hypertorch.HyperModel):
     def __init__(self):
         super(MyTestModelSubModule, self).__init__()
         self.hidden_layer = HyperLinear()
 
-    def forward(self, x, test_scalar):
-        return self.hidden_layer(x)*test_scalar
+    def forward(self, x : dict, test_scalar):
+        print("x=>", x)
+        assert isinstance(x, dict), "x should be a dict, but its not!"
+        return self.hidden_layer(x["test"])*test_scalar
 
 class MyTestModel(hypertorch.HyperModel):
     def __init__(self):
@@ -36,11 +39,10 @@ class MyTestModel(hypertorch.HyperModel):
         self.layer_c = HyperLinear(n_output_nodes=1)
         pass
 
-    def forward(self, x):
+    def forward(self, x : dict):
         y = self.layer_a(x[0])
-        y = self.layer_b(y, test_scalar=1.1)
-        y = self.layer_b(y, test_scalar=0.9)
-        y = self.layer_bb(y)
+        y = self.layer_b({ "test" : y}, test_scalar=1.1)
+        y = self.layer_bb([y])
         y = self.layer_c(y)
         return y
 
@@ -54,8 +56,6 @@ extraspace = {
     "HyperLinear" : { "nodes" : hypertorch.searchspaceprimitives.IntSpace(1,350) }
 }
 searchspace = hyper_model.get_searchspace(default_layer_searchspace={ **hypertorch.DefaultLayerSpace, **extraspace} )
-print(searchspace)
-exit(1)
 individual = searchspace.default_individual()
 
 # individual = hyper.Individual.coalesce(individual, hyper.Individual.parse({
