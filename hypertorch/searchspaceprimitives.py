@@ -1,9 +1,10 @@
+from typing import List, Dict, Any, Union, Optional, Set
 
 class SearchSpacePrimitive(object):
     pass
 
 class IntSpace(SearchSpacePrimitive):
-    def __init__(self, from_int, to_int, default=None):
+    def __init__(self, from_int : int, to_int : int, default : Optional[int] = None):
         self.from_int = from_int
         self.to_int = to_int
         self.default = default
@@ -15,7 +16,7 @@ class IntSpace(SearchSpacePrimitive):
         return self.__str__()
 
 class FloatSpace(SearchSpacePrimitive):
-    def __init__(self, from_float, to_float, default=None):
+    def __init__(self, from_float : float, to_float : float, default : Optional[float] = None):
         self.from_float = from_float
         self.to_float = to_float
         self.default = default
@@ -27,7 +28,7 @@ class FloatSpace(SearchSpacePrimitive):
         return self.__str__()
 
 class NoSpace(SearchSpacePrimitive):
-    def __init__(self, value):
+    def __init__(self, value : Any):
         self.exact_value = value
     
     def __str__(self):
@@ -37,7 +38,7 @@ class NoSpace(SearchSpacePrimitive):
         return self.__str__()
 
 class OneOfSet(SearchSpacePrimitive):
-    def __init__(self, set_values, default=None):
+    def __init__(self, set_values : List[Any], default : Optional[List[Any]] = None):
         self.set_values = [k for k in set_values]
         self.default = default
     

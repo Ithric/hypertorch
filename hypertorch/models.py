@@ -1,14 +1,19 @@
 import torch
+from typing import List, Any, Dict
 import numpy as np
 from functools import partial
 import copy
 from hypertorch import searchspaceprimitives
 from hypertorch.constants import *
+from dataclasses import dataclass
 
+@dataclass
+class ExpandedArg:
+    args : List[Any]
 
 
 class Individual(object):
-    def __init__(self, individual_dict):
+    def __init__(self, individual_dict : Dict[str,Any]):
         self.__individual = individual_dict
 
     def __str__(self):
@@ -26,7 +31,7 @@ class Individual(object):
         return "{\n" + rec_print(self, indent="  ") + "\n}"
         
     @staticmethod
-    def coalesce(left, right):
+    def coalesce(left : 'Individual', right : 'Individual') -> 'Individual':
         """ Coalesce two individuals together """
         all_keys = set(left.__individual.keys()).union(set(right.__individual.keys()))
         key_values = dict()
@@ -45,7 +50,7 @@ class Individual(object):
         return Individual(key_values)
 
     @staticmethod
-    def parse(individual_dict):
+    def parse(individual_dict : Dict[str,Any]) -> 'Individual':
         key_values = dict()
         for key,value in individual_dict.items():
             if isinstance(value, dict):
@@ -55,17 +60,16 @@ class Individual(object):
         return Individual(key_values)
 
 
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> Any:
         return self.__individual[index]
 
-    def __setitem__(self, index, value):
+    def __setitem__(self, index, value) -> None:
         self.__individual[index] = value
 
-    def get(self, key, default_value=None):
+    def get(self, key, default_value=None) -> Any:
         return self.__individual.get(key, default_value)
     
-    def as_dict(self):
-
+    def as_dict(self) -> Dict[str,Any]:
         def rec_as_dict(d):
             output = []
             for key,item in d.__individual.items():
@@ -82,7 +86,7 @@ class NullSpace(object):
     pass
 
 class SearchSpace(object):
-    def __init__(self, type_key, ss_dict=None):
+    def __init__(self, type_key : str, ss_dict : Dict[str,Any] = None):
         self.__type_key = type_key
         self._searchspace_dict = ss_dict or dict()
         self.type_key = type_key
@@ -100,11 +104,11 @@ class SearchSpace(object):
 
         return "\"{}#{}\"".format(self.__type_key, "root") + " : {\n" + recPrintSearchSpace(self, indent="  ") + "\n}"
 
-    def append_child(self, key, ss):
+    def append_child(self, key : str, ss : 'SearchSpace') -> None:
         self._searchspace_dict[key] = ss
         
-    def default_individual(self, default_values = DefaultLayerConstants) -> Individual:
-        def rec_collapse_searchspace(searchspace) -> Individual:            
+    def default_individual(self, default_values : Dict[str,Any] = DefaultLayerConstants) -> Individual:
+        def rec_collapse_searchspace(searchspace : SearchSpace) -> Individual:            
             key_values = {}
             default_key_values = default_values.get(searchspace.__type_key, {})
             all_keys = set(default_key_values.keys()).union(searchspace._searchspace_dict.keys())
@@ -157,28 +161,32 @@ class SearchSpace(object):
 
         return rec_collapse_searchspace_to_random(self)
 
-    def get(self, key, default_value=None):
+    def get(self, key : str, default_value : Optional[Any] = None) -> Any:
         return self._searchspace_dict.get(key, default_value)
 
         
 class MaterializedModel(torch.nn.Module):
-    def __init__(self, hyper_model, torch_modules):
+    def __init__(self, hyper_model : 'HyperModel', torch_modules : List[torch.nn.Module]):
         super(MaterializedModel, self).__init__()
         self.hyper_model = hyper_model
         for idx,(layer_key,module) in enumerate(torch_modules):
             self.add_module("{}#{}".format(idx,layer_key), module)
 
-    def forward(self, x):
-        return self.hyper_model(x)
+    def forward(self, *args: Any, **kwargs: Any):
+        return self.hyper_model(*args, **kwargs)
         
-        
-    def train(self, mode=True):
+    def train(self, mode : bool = True):
         self.hyper_model.train(mode)
         return super().train(mode)
 
     def eval(self):
         self.hyper_model.train(mode=False)
         return super().eval()
+    
+    #  == Ducktyping interface HyperModel/MaterializedModel =====
+    @property
+    def is_material(self):
+        return True
 
     
 
@@ -208,8 +216,8 @@ class HyperModel(object):
     def forward(self, x):
         pass
 
-    def __call__(self, x, **kwargs):
-        return self.forward(x, **kwargs)
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
 
     def add_module(self, key, module):
         self.modules.append((key,module))
@@ -249,7 +257,7 @@ class HyperModel(object):
         else:
             return original_forward(data, **kwargs)
 
-    def materialize(self, individual : Individual, input_shapes, torch_module_list=None, forward_ext_args=None) -> MaterializedModel:
+    def materialize(self, individual : Individual, input_shapes : ExpandedArg|list[Any]|dict[Any], torch_module_list=None, forward_ext_args=None) -> MaterializedModel:
         """ Turn this higher order model into a regular torch.Module """
         torch_module_list = torch_module_list or []
         is_root = HyperModel.materializing_hack == False
@@ -269,13 +277,15 @@ class HyperModel(object):
             return isinstance(a[0], (list,tuple,dict))
 
         def shapes_to_sampledata(shape_struct):
-            if isinstance(shape_struct, (tuple,list)):                
+            if isinstance(shape_struct, (tuple,list)):
                 if is_complex_subtype(shape_struct):
                     return list(map(shapes_to_sampledata, shape_struct))
                 else:
                     return torch.from_numpy(np.zeros((1,)+shape_struct, dtype=np.float32))
             elif isinstance(shape_struct, dict):
                 return dict([(k,shapes_to_sampledata(v)) for k,v in shape_struct.items()])
+            elif isinstance(shape_struct, ExpandedArg):
+                return ExpandedArg(shapes_to_sampledata(shape_struct.args))
             elif shape_struct is None:
                 return None
             else:
@@ -283,12 +293,6 @@ class HyperModel(object):
                 print(shape_struct)
                 exit(1)
 
-
-        # def shapes_to_sampledata(shapes):
-        #     if isinstance(input_shapes, (tuple,list)) and not isinstance(input_shapes, torch.Size):
-        #         return [torch.from_numpy(np.zeros((1,)+shape, dtype=np.float32)) for shape in input_shapes]
-        #     else:
-        #         return torch.from_numpy(np.zeros((1,)+input_shapes, dtype=np.float32))
 
         binding_state = {}
         for variable_name,hyper_model in material_self.__get_hyper_models():
@@ -300,7 +304,10 @@ class HyperModel(object):
 
         # Perform a materializing forward
         fake_data = shapes_to_sampledata(input_shapes)
-        material_self.original_forward(fake_data, **(forward_ext_args or {}))
+        if isinstance(fake_data, ExpandedArg):
+            material_self.original_forward(*fake_data.args, **(forward_ext_args or {}))
+        else:
+            material_self.original_forward(fake_data, **(forward_ext_args or {}))
 
         # Add torch modules too!
         for torch_module in material_self.__get_torch_modules():
@@ -341,4 +348,11 @@ class HyperModel(object):
         # Merge with default searchspace per layer (where value is Null -> failover to default space)
         ss = rec_merge_space(ss, default_layer_searchspace, "..")
         return ss
+    
+    
+    #  == Ducktyping interface HyperModel/MaterializedModel =====
+
+    @property
+    def is_material(self):
+        return False
 
