@@ -1,9 +1,15 @@
 [tool.poetry]
 name = "hypertorch"
-version = "0.1.1"
+version = "0.2.0"
 description = ""
 authors = ["Ronny Kaste <rkaste@gmail.com>"]
 readme = "README.md"
+
+
+packages = [
+    {include = "hypertorch/**/*.py"},
+    {include = "hypertorch2/**/*.py"},
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
