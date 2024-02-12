@@ -15,14 +15,15 @@ class HyperLinear(HyperModel):
         super(HyperLinear, self).__init__()
         self.n_output_nodes = auto_space(n_output_nodes)
 
-    def materializing_forward(self, ctx : MaterializationContext, orig_forward, x : torch.Tensor):
+    def materializing_forward(self, ctx : MaterializationContext, x : torch.Tensor):
         self.linear = torch.nn.Linear(x.shape[-1], ctx.individual["nodes"])
-        return orig_forward(x)
+        return ctx.original_forward(x)
     
     def forward(self, x : torch.Tensor):
         return self.linear(x)
 
     def get_searchspace(self, default_space : Dict[str,Any]) -> SearchSpace:
+        default_space = default_space[str(self.__class__.__name__)]
         return SearchSpace(self.__class__.__name__, {
             "nodes" : self.n_output_nodes or default_space["nodes"]
         }) 
@@ -32,14 +33,16 @@ class HyperDropout(HyperModel):
         super(HyperDropout, self).__init__()
         self.__dropout = auto_space(p)
             
-    def materializing_forward(self, ctx : MaterializationContext, orig_forward, x : torch.Tensor):
+    def materializing_forward(self, ctx : MaterializationContext, x : torch.Tensor):
         self.layer = torch.nn.Dropout(ctx.individual["dropout_p"])
-        return orig_forward(x)
+        return ctx.original_forward(x)
 
     def forward(self, x):
         return self.layer(x)
 
     def get_searchspace(self, default_space : Dict[str,Any]) -> SearchSpace:
+
+        default_space = default_space[str(self.__class__.__name__)]
         return SearchSpace(self.__class__.__name__, {
             "dropout_p" : self.__dropout or default_space["dropout_p"]
         })
@@ -52,9 +55,9 @@ class HyperGaussNoise(HyperModel):
         self.__noise = torch.tensor(0,)
         self.__sigma_space = auto_space(sigma_space)
         
-    def materializing_forward(self, ctx : MaterializationContext, orig_forward, x : torch.Tensor):
+    def materializing_forward(self, ctx : MaterializationContext, x : torch.Tensor):
         self.__sigma = ctx.individual["sigma"]
-        return orig_forward(x)
+        return ctx.original_forward(x)
 
     def forward(self, x):
         self.__noise = self.__noise.to(x.device)
@@ -65,6 +68,8 @@ class HyperGaussNoise(HyperModel):
         return x 
         
     def get_searchspace(self, default_space : Dict[str,Any]) -> SearchSpace:
+
+        default_space = default_space[str(self.__class__.__name__)]
         return SearchSpace(self.__class__.__name__, {
             "sigma" : self.__sigma_space or default_space["sigma"]
         })
@@ -73,13 +78,15 @@ class HyperNoOp(HyperModel):
     def __init__(self):
         super(HyperNoOp, self).__init__()
     
-    def materializing_forward(self, ctx : MaterializationContext, orig_forward, x : torch.Tensor):
-        return orig_forward(x)
+    def materializing_forward(self, ctx : MaterializationContext, x : torch.Tensor):
+        return ctx.original_forward(x)
 
     def forward(self, x):
         return x 
         
     def get_searchspace(self, default_space : Dict[str,Any]) -> SearchSpace:
+
+        default_space = default_space[str(self.__class__.__name__)]
         return SearchSpace(self.__class__.__name__, {})
     
 
@@ -94,7 +101,7 @@ class HyperRNN(HyperModel):
             "nlayers" : auto_space(n_layers or IntSpace(1,5))
         }
 
-    def materializing_forward(self, ctx : MaterializationContext, orig_forward, x : torch.Tensor):
+    def materializing_forward(self, ctx : MaterializationContext, x : torch.Tensor):
         mode = ctx.individual["mode"]
         if mode == "GRU":
             self.rnn = torch.nn.GRU(x.shape[-1], ctx.individual["ndims"], num_layers=ctx.individual["nlayers"], bidirectional=ctx.individual["bidir"], batch_first=True)
@@ -103,7 +110,7 @@ class HyperRNN(HyperModel):
         else:
             raise Exception("Unknown RNN type: {}".format(mode))
         
-        return orig_forward(x)
+        return ctx.original_forward(x)
         
     def forward(self, x):
         lstm_output, state = self.rnn(x)
@@ -113,6 +120,8 @@ class HyperRNN(HyperModel):
             return lstm_output[:,-1].contiguous()
 
     def get_searchspace(self, default_space : Dict[str,Any]) -> SearchSpace:
+
+        default_space = default_space[str(self.__class__.__name__)]
         coallesced_space = {
             "mode" : self.__searchspace_dict["mode"] or default_space["mode"],
             "ndims" : self.__searchspace_dict["ndims"] or default_space["ndims"],
@@ -128,7 +137,7 @@ class HyperNodeSelector(HyperModel):
         self.__hyperNodes = hyperNodes
         self.__default_key = default_key
 
-    def materializing_forward(self, ctx : MaterializationContext, orig_forward, *args, **kwargs):
+    def materializing_forward(self, ctx : MaterializationContext, *args, **kwargs):
         selected_key = ctx.individual["key"]
         if selected_key == "default_key": selected_key = self.__default_key
 
@@ -139,7 +148,7 @@ class HyperNodeSelector(HyperModel):
             self.active_node = selected_layer
         else:
             self.active_node = self.__hyperNodes[selected_key]
-        return orig_forward(*args, **kwargs)
+        return ctx.original_forward(*args, **kwargs)
 
     def forward(self, x):
         return self.active_node.forward(x)
@@ -148,7 +157,7 @@ class HyperNodeSelector(HyperModel):
         conditional_spaces = SearchSpace("ConditionalNode")
         for hyperNodeKey,hyperNode in self.__hyperNodes.items():
             if isinstance(hyperNode, HyperModel):
-                conditional_spaces.append_child(hyperNodeKey, hyperNode.build_searchspace()) # TODO: bad space! this will discard the supplied searchspace in favour of defaultspace
+                conditional_spaces.append_child(hyperNodeKey, hyperNode.build_searchspace(default_space))
             else:
                 continue
 
@@ -176,9 +185,9 @@ class HyperLayerNorm(HyperModel):
         super(HyperLayerNorm, self).__init__()
         pass
 
-    def materializing_forward(self, ctx : MaterializationContext, orig_forward, x : torch.Tensor):
+    def materializing_forward(self, ctx : MaterializationContext, x : torch.Tensor):
         self.layer = torch.nn.LayerNorm(x.shape[-1])
-        return orig_forward(x)
+        return ctx.original_forward(x)
 
     def forward(self, x):
         return self.layer(x)

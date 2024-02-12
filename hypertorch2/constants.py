@@ -11,7 +11,9 @@ DefaultLayerSpace = {
         "ndims" : IntSpace(1, 3),
         "bidir" : OneOfSet([True, False]),
         "nlayers" : IntSpace(1, 3)
-    }
+    },
+    "HyperNodeSelector" : {},
+    "HyperNoOp" : {}
 }
 
 

@@ -12,12 +12,19 @@ from dataclasses import dataclass
 class MaterializationContext:
     path : List[str]
     individual : Dict[str,Any]
+    original_forward : Any = None
 
     def get_child_context(self, child_name : str) -> 'MaterializationContext':
         child_path_str = "/".join(self.path + [child_name])
         if child_name not in self.individual:            
             raise ValueError(f"Missing individual at '{child_path_str}'")
         return MaterializationContext(self.path + [child_name], self.individual[child_name])
+    
+    def clone_with(self, **kwargs) -> 'MaterializationContext':
+        new_dict = copy.deepcopy(self.__dict__)
+        new_dict.update(kwargs)
+        new_ctx = MaterializationContext(**new_dict)
+        return new_ctx
 
 
 
@@ -190,7 +197,7 @@ class HyperModel(torch.nn.Module):
             # Apply the materialization context to this model            
             if ctx is not None and hasattr(module, "materializing_forward"):
                 orig_forward_map[module] = module.forward
-                module.forward = partial(module.materializing_forward, ctx, module.forward)
+                module.forward = partial(module.materializing_forward, ctx.clone_with(original_forward=module.forward))
             elif ctx is None and module in orig_forward_map:
                 module.forward = orig_forward_map[module]
 
@@ -240,8 +247,7 @@ class HyperModel(torch.nn.Module):
             if not isinstance(obj, HyperModel): return None
 
             # Build the searchspace for this model
-            default_layer_space = default_searchspace.get(obj.__class__.__name__, {})
-            searchspace = obj.get_searchspace(default_layer_space)
+            searchspace = obj.get_searchspace(default_layer_searchspace)
             searchspace = searchspace or SearchSpace(obj.__class__.__name__)
 
             # Recursively merge children
