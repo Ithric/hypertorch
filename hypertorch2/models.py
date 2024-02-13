@@ -225,7 +225,6 @@ class HyperModel(torch.nn.Module):
                     raise Exception(f"Error while applying materialization context to {child_path}: {e}")
 
 
-
         try:
             recursive_apply_materialization_context([self.debug_name], self, MaterializationContext(["root"],individual.as_dict()))
             # Call forward again to materialize the model
@@ -272,6 +271,8 @@ class HyperModel(torch.nn.Module):
                         childss = rec_merge_space(value, default_searchspace, "{}/{}".format(path,name))
                         if childss != None:
                             list_ss.append_child(str(i), childss)
+                        else:
+                            list_ss.append_child(str(i), NoSpace("NoSpace"))
                     searchspace.append_child(name, list_ss)
 
             return searchspace

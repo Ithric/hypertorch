@@ -26,6 +26,11 @@ class MyTestModel(hypertorch.HyperModel):
             HyperLinear(),
             HyperLinear()
         ])
+        self.hypersequential = HyperSequential(
+            HyperLinear(),
+            torch.nn.ReLU(),
+            HyperLinear()
+        )
         self.layer_c = HyperLinear(n_output_nodes=1)
         pass
 
@@ -36,6 +41,7 @@ class MyTestModel(hypertorch.HyperModel):
         y = self.layer_c(y)
         for layer in self.layer_list:
             y = layer(y)
+        y = self.hypersequential(y)
         return y
 
 
@@ -51,12 +57,12 @@ extraspace = {
 }
 searchspace = hyper_model.build_searchspace(default_layer_searchspace={**hypertorch.DefaultLayerSpace, **extraspace} )
 assert searchspace is not None, "Searchspace is None!"
+print("Searchspace:", searchspace)
 individual = searchspace.default_individual()
 
 # materialize and test the model
 hyper_model.materialize(individual, inputs[0], inputs[1])
 
 prediction = hyper_model(inputs[0], inputs[1])
-print("Prediction:", prediction, prediction.shape)
 
 
