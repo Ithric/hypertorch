@@ -7,7 +7,7 @@ from hypertorch2.searchspaceprimitives import *
 
 class MyTestModelSubModule(hypertorch.HyperModel):
     def __init__(self):
-        super(MyTestModelSubModule, self).__init__()
+        super(MyTestModelSubModule, self).__init__(debug_name="MyTestModelSubModule", labels=["test-submodel"])
         self.hidden_layer = HyperLinear()
 
     def forward(self, x : dict, test_scalar):
@@ -16,7 +16,7 @@ class MyTestModelSubModule(hypertorch.HyperModel):
 
 class MyTestModel(hypertorch.HyperModel):
     def __init__(self):
-        super(MyTestModel, self).__init__(debug_name="MyTestModel")
+        super(MyTestModel, self).__init__(debug_name="MyTestModel", labels=["test"])
         # self.layer_a = HyperLinear(name="layer_a")
         self.layer_dict = nn.ModuleDict({
             "layer_a" : HyperLinear(),
@@ -32,6 +32,10 @@ class MyTestModel(hypertorch.HyperModel):
             HyperLinear()
         )
         self.layer_c = HyperLinear(n_output_nodes=1)
+        self.activation_function = HyperNodeSelector({
+            "elu" : torch.nn.ELU(),
+            "relu" : torch.nn.ReLU(),
+        }, default_key="elu")
         pass
 
     def forward(self, x : torch.Tensor, y : torch.Tensor):
@@ -42,6 +46,7 @@ class MyTestModel(hypertorch.HyperModel):
         for layer in self.layer_list:
             y = layer(y)
         y = self.hypersequential(y)
+        y = self.activation_function(y)
         return y
 
 
@@ -56,13 +61,18 @@ extraspace = {
     "HyperLinear" : { "nodes" : hypertorch.searchspaceprimitives.IntSpace(1,350) }
 }
 searchspace = hyper_model.build_searchspace(default_layer_searchspace={**hypertorch.DefaultLayerSpace, **extraspace} )
-assert searchspace is not None, "Searchspace is None!"
-print("Searchspace:", searchspace)
-individual = searchspace.default_individual()
+searchspace = searchspace.select_by_label("primitives", ["random"], mode="exclude")
+searchspace = searchspace.select_by_label("hypermodules", ["test-submodel"], mode="exclude")
+print(searchspace)
+# print(searchspace.select_by_label("searchspace", "test-submodel", mode="exclude"))
+# print(searchspace)
+# assert searchspace is not None, "Searchspace is None!"
+# print("Searchspace:", searchspace)
+# individual = searchspace.default_individual()
 
-# materialize and test the model
-hyper_model.materialize(individual, inputs[0], inputs[1])
+# # materialize and test the model
+# hyper_model.materialize(individual, inputs[0], inputs[1])
 
-prediction = hyper_model(inputs[0], inputs[1])
+# prediction = hyper_model(inputs[0], inputs[1])
 
 

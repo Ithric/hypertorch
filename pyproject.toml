@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hypertorch"
-version = "0.2.3"
+version = "0.2.4"
 description = ""
 authors = ["Ronny Kaste <rkaste@gmail.com>"]
 readme = "README.md"

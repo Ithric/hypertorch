@@ -4,6 +4,7 @@ import numpy as np
 from functools import partial
 import copy
 from . import searchspaceprimitives
+from .searchspaceprimitives import SearchSpaceKind
 from .constants import *
 from dataclasses import dataclass
 
@@ -102,10 +103,18 @@ class NullSpace(object):
     pass
 
 class SearchSpace(object):
-    def __init__(self, type_key : str, ss_dict : Dict[str,Any] = None):
+    def __init__(self, type_key : str, ss_dict : Dict[str,Any] = None, labels : Optional[str] = None):
         self.__type_key = type_key
         self._searchspace_dict = ss_dict or dict()
+        self.__labels = labels or []
         self.type_key = type_key
+
+    @property
+    def labels(self) -> List[str]:
+        return self.__labels
+    
+    def add_labels(self, *labels : List[str]) -> None:
+        self.__labels.extend(labels)
 
     def __str__(self):
         def recPrintSearchSpace(d, indent):
@@ -179,13 +188,52 @@ class SearchSpace(object):
 
     def get(self, key : str, default_value : Optional[Any] = None) -> Any:
         return self._searchspace_dict.get(key, default_value)
+    
+    def select_by_label(self, target : str, kind_or_label : List[SearchSpaceKind|str], mode : str) -> Optional['SearchSpace']: 
+        """ Selects a subset of the searchspace based on the kind or label of the primitives
+        
+        Args:
+            target (str): Either "hypermodules" or "primitives"
+            kind_or_label (List[SearchSpaceKind|str]): The kind or label to select by
+            mode (str): Either "include" or "exclude"
+        """
+        assert target in ["hypermodules", "primitives"], "Target must be either 'searchspace' or 'primitives'"
+        assert mode in ["include", "exclude"], "Mode must be either 'include' or 'exclude'"
+        def label_is_valid(labels : List[str]):
+            if mode == "include":
+                return len(set(kind_or_label).intersection(set(labels))) > 0
+            elif mode == "exclude":
+                return len(set(kind_or_label).intersection(set(labels))) == 0
+            
+        if target == "hypermodules" and not label_is_valid(self.labels):
+            return None
+
+        output_dict = {}
+        for key, value in self._searchspace_dict.items():
+            if isinstance(value, SearchSpace):                
+                sschild = value.select_by_label(target, kind_or_label, mode=mode)
+                if sschild is not None: output_dict[key] = sschild
+                
+            elif isinstance(value, searchspaceprimitives.SearchSpacePrimitive):
+                if target != "primitives" or label_is_valid(value.kind):
+                    output_dict[key] = value
+
+        if len(output_dict) == 0: return None
+        return SearchSpace(self.__type_key, output_dict, labels=self.labels)
+        
+
 
 
 class HyperModel(torch.nn.Module):
-    def __init__(self, debug_name : str = ""):
+    def __init__(self, debug_name : str = "", labels : Optional[List[str]] = None):
         super(HyperModel, self).__init__()
         self.output_shape = None
         self.debug_name = debug_name
+        self.__labels = labels or []
+
+    @property
+    def labels(self) -> List[str]:
+        return self.__labels
 
     def materialize(self, individual : Individual, *args, **kwargs):
         orig_forward_map = {}
@@ -248,6 +296,10 @@ class HyperModel(torch.nn.Module):
             # Build the searchspace for this model
             searchspace = obj.get_searchspace(default_layer_searchspace)
             searchspace = searchspace or SearchSpace(obj.__class__.__name__)
+
+            # Apply labels from the hypermodel (if applicable) to the searchspace
+            if isinstance(obj, HyperModel):
+                searchspace.add_labels(*obj.labels)
 
             # Recursively merge children
             for name, module in obj.named_children():
