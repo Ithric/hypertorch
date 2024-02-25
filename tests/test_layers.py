@@ -82,6 +82,6 @@ class TestLayers(unittest.TestCase):
         self.assertEqual(prediction.shape, (12, 4, 6))
 
 
-# poetry run python -m tests.layer_tests
+# poetry run python -m tests.test_layers
 if __name__ == '__main__':
     unittest.main()

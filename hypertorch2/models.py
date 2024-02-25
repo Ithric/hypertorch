@@ -237,37 +237,68 @@ class HyperModel(torch.nn.Module):
 
     def materialize(self, individual : Individual, *args, **kwargs):
         orig_forward_map = {}
-
-        def recursive_apply_materialization_context(path : List[str], obj : Any, ctx : Optional[MaterializationContext]):
+        validation_counter = 0
+        materialized_set = set()
+        
+        def recursive_reset_forward(obj : Any):
+            nonlocal validation_counter
+            nonlocal orig_forward_map    
             if not isinstance(obj, HyperModel): return
+            
+            module : HyperModel = obj
+            if module in orig_forward_map:
+                module.forward = orig_forward_map[module]
+                validation_counter -= 1
+                orig_forward_map.pop(module)
+
+            for name, module in obj.named_children():
+                if isinstance(module, HyperModel):
+                    recursive_reset_forward(module)
+                elif isinstance(module, torch.nn.ModuleDict):
+                    for key, value in module.items():
+                        recursive_reset_forward(value)
+                elif isinstance(module, torch.nn.ModuleList):
+                    for value in module:
+                        recursive_reset_forward(value)
+
+        def recursive_apply_materialization_context(path : List[str], obj : Any, ctx : MaterializationContext):
+            nonlocal validation_counter
+            nonlocal orig_forward_map
+            nonlocal materialized_set
+            if not isinstance(obj, HyperModel): return
+            if obj in materialized_set: return # Already materialized
+            materialized_set.add(obj)
             module : HyperModel = obj
 
             # Apply the materialization context to this model            
-            if ctx is not None and hasattr(module, "materializing_forward"):
+            if hasattr(module, "materializing_forward"):
                 orig_forward_map[module] = module.forward
+                
+                if "materializing_forward" in str(module.forward):
+                    raise Exception(f"Module {module.debug_name} has already been materialized. This is a bug.")
+                
                 module.forward = partial(module.materializing_forward, ctx.clone_with(original_forward=module.forward))
-            elif ctx is None and module in orig_forward_map:
-                module.forward = orig_forward_map[module]
+                validation_counter += 1
 
             # Recursively apply to children
             for name, module in obj.named_children():
                 child_path = path + [name]
                 try:
                     if isinstance(module, HyperModel):
-                        child_ctx = ctx.get_child_context(name) if ctx is not None else None
+                        child_ctx = ctx.get_child_context(name)
                         recursive_apply_materialization_context(child_path, module, child_ctx)
 
                     elif isinstance(module, torch.nn.ModuleDict):
-                        dict_context = ctx.get_child_context(name) if ctx is not None else None
+                        dict_context = ctx.get_child_context(name)
                         for key, value in module.items():
                             child_ctx = dict_context.get_child_context(key) if dict_context is not None else None                            
                             recursive_apply_materialization_context(child_path, value, child_ctx)
 
                     elif isinstance(module, torch.nn.ModuleList):
-                        iter_context = ctx.get_child_context(name) if ctx is not None else None
+                        iter_context = ctx.get_child_context(name)
                         for i, value in enumerate(module):
                             list_index_name = f"{i}"
-                            child_ctx = iter_context.get_child_context(list_index_name) if ctx is not None else None
+                            child_ctx = iter_context.get_child_context(list_index_name)
                             recursive_apply_materialization_context(child_path, value, child_ctx)
                 except Exception as e:
                     raise Exception(f"Error while applying materialization context to {child_path}: {e}")
@@ -280,7 +311,9 @@ class HyperModel(torch.nn.Module):
         except Exception as e:
             raise Exception(f"Error while materializing {self.debug_name}: {e}")
         finally:
-            recursive_apply_materialization_context([self.debug_name], self, None)
+            recursive_reset_forward(self)
+            assert validation_counter == 0, f"Validation counter should be 0, but its {validation_counter} - This is a bug"
+            
 
     def get_searchspace(self, default_space : Dict[str,Any]) -> Optional[SearchSpace]:
         """ What are you doing in here? In v2 you must use "build _searchspace" instaed to start the building process """

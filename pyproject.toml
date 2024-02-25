@@ -24,3 +24,6 @@ toolz = "^0.12.1"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+test = "test:entrypoint"

@@ -61,18 +61,11 @@ extraspace = {
     "HyperLinear" : { "nodes" : hypertorch.searchspaceprimitives.IntSpace(1,350) }
 }
 searchspace = hyper_model.build_searchspace(default_layer_searchspace={**hypertorch.DefaultLayerSpace, **extraspace} )
-searchspace = searchspace.select_by_label("primitives", ["random"], mode="exclude")
-searchspace = searchspace.select_by_label("hypermodules", ["test-submodel"], mode="exclude")
-print(searchspace)
-# print(searchspace.select_by_label("searchspace", "test-submodel", mode="exclude"))
-# print(searchspace)
-# assert searchspace is not None, "Searchspace is None!"
-# print("Searchspace:", searchspace)
-# individual = searchspace.default_individual()
+individual = searchspace.default_individual()
 
 # # materialize and test the model
-# hyper_model.materialize(individual, inputs[0], inputs[1])
+hyper_model.materialize(individual, inputs[0], inputs[1])
 
-# prediction = hyper_model(inputs[0], inputs[1])
-
+prediction = hyper_model(inputs[0], inputs[1])
+print("Model prediction shape:", prediction.shape)
 
