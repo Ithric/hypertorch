@@ -17,7 +17,7 @@ class MaterializationContext:
 
     def get_child_context(self, child_name : str) -> 'MaterializationContext':
         child_path_str = "/".join(self.path + [child_name])
-        if child_name not in self.individual:            
+        if child_name not in self.individual:
             raise ValueError(f"Missing individual at '{child_path_str}'")
         return MaterializationContext(self.path + [child_name], self.individual[child_name])
     
@@ -151,7 +151,7 @@ class SearchSpace(object):
                     elif isinstance(left, searchspaceprimitives.FloatSpace) and left.default is not None: key_values[key] = left.default
                     elif isinstance(left, searchspaceprimitives.IntSpace) and left.default is not None: key_values[key] = left.default
                     elif isinstance(left, searchspaceprimitives.NoSpace): key_values[key] = left.exact_value
-                    else: raise Exception("Unknown left type: {}, key={}".format(left, key))
+                    else: raise Exception("Unknown left type: {} {}, key={}".format(left, type(left), key))
 
                 elif right is not None:
                     key_values[key] = right
@@ -186,7 +186,7 @@ class SearchSpace(object):
 
         return rec_collapse_searchspace_to_random(self)
 
-    def get(self, key : str, default_value : Optional[Any] = None) -> Any:
+    def get(self, key : str, default_value : Optional[Any] = None) -> 'SearchSpace':
         return self._searchspace_dict.get(key, default_value)
     
     def select_by_label(self, target : str, kind_or_label : List[SearchSpaceKind|str], mode : str) -> Optional['SearchSpace']: 
@@ -221,24 +221,52 @@ class SearchSpace(object):
         if len(output_dict) == 0: return None
         return SearchSpace(self.__type_key, output_dict, labels=self.labels)
         
+    # override compare equals
+    def deep_equals(self, other : 'SearchSpace'):
+        import json
+        assert isinstance(other, SearchSpace), "Other must be a SearchSpace"
+        return json.dumps(str(self)) == json.dumps(str(other)) # Hacky, but it works for now
 
+
+def resolve_path(current_path: List[str], target_path: str) -> List[str]:
+    """Resolve a target path to an absolute path."""
+    if target_path.startswith("/"):
+        # Absolute path: Return it as is, split into components, but filter out empty strings
+        return [component for component in target_path.split("/") if component]
+    else:
+        # Relative path: Resolve it relative to the current path
+        resolved_path = list(current_path)  # Create a mutable copy of current_path
+        for component in target_path.split("/"):
+            if component == "..":
+                # Move up one directory (remove the last component), if possible
+                if resolved_path:
+                    resolved_path.pop()
+            elif component != ".":
+                # Ignore "." since it represents the current directory
+                resolved_path.append(component)
+        return resolved_path
 
 
 class HyperModel(torch.nn.Module):
-    def __init__(self, debug_name : str = "", labels : Optional[List[str]] = None):
+    def __init__(self, debug_name : str = "", labels : Optional[List[str]] = None, rebase_searchspace_root : Optional[str] = None):
         super(HyperModel, self).__init__()
         self.output_shape = None
         self.debug_name = debug_name
         self.__labels = labels or []
+        self.__rebase_searchspace_root = rebase_searchspace_root        
 
     @property
     def labels(self) -> List[str]:
         return self.__labels
+    
+    def set_rebase_root(self, path : str) -> None:
+        self.__rebase_searchspace_root = path
 
     def materialize(self, individual : Individual, *args, **kwargs):
         orig_forward_map = {}
         validation_counter = 0
         materialized_set = set()
+        root_ctx = MaterializationContext([],individual.as_dict())
         
         def recursive_reset_forward(obj : Any):
             nonlocal validation_counter
@@ -261,7 +289,7 @@ class HyperModel(torch.nn.Module):
                     for value in module:
                         recursive_reset_forward(value)
 
-        def recursive_apply_materialization_context(path : List[str], obj : Any, ctx : MaterializationContext):
+        def recursive_apply_materialization_context(obj : Any, ctx : MaterializationContext):
             nonlocal validation_counter
             nonlocal orig_forward_map
             nonlocal materialized_set
@@ -269,6 +297,7 @@ class HyperModel(torch.nn.Module):
             if obj in materialized_set: return # Already materialized
             materialized_set.add(obj)
             module : HyperModel = obj
+            
 
             # Apply the materialization context to this model            
             if hasattr(module, "materializing_forward"):
@@ -277,35 +306,55 @@ class HyperModel(torch.nn.Module):
                 if "materializing_forward" in str(module.forward):
                     raise Exception(f"Module {module.debug_name} has already been materialized. This is a bug.")
                 
-                module.forward = partial(module.materializing_forward, ctx.clone_with(original_forward=module.forward))
+                forward_ctx = ctx.clone_with(original_forward=module.forward)
+                module.forward = partial(module.materializing_forward, forward_ctx)
                 validation_counter += 1
 
             # Recursively apply to children
-            for name, module in obj.named_children():
-                child_path = path + [name]
+            for name, child_module in obj.named_children():
+                child_module : HyperModel = child_module
+                child_path = ctx.path + [name]
+                    
                 try:
-                    if isinstance(module, HyperModel):
-                        child_ctx = ctx.get_child_context(name)
-                        recursive_apply_materialization_context(child_path, module, child_ctx)
+                    if isinstance(child_module, HyperModel):
+                        # Rebase the searchspace if applicable
+                        if child_module.__rebase_searchspace_root is not None:
+                            modified_root = resolve_path(child_path, child_module.__rebase_searchspace_root)
+                            child_ctx = root_ctx
+                            for part in modified_root:
+                                child_ctx = child_ctx.get_child_context(part)
+                        else:
+                            child_ctx = ctx.get_child_context(name)
+                            
+                        recursive_apply_materialization_context(child_module, child_ctx)
 
-                    elif isinstance(module, torch.nn.ModuleDict):
+                    elif isinstance(child_module, torch.nn.ModuleDict):
                         dict_context = ctx.get_child_context(name)
-                        for key, value in module.items():
-                            child_ctx = dict_context.get_child_context(key) if dict_context is not None else None                            
-                            recursive_apply_materialization_context(child_path, value, child_ctx)
+                        for grandchild_name, grandchild in child_module.items():
+                            # Rebase the searchspace if applicable
+                            if grandchild.__rebase_searchspace_root is not None:
+                                modified_root = resolve_path(ctx.path + [grandchild_name], grandchild.__rebase_searchspace_root)
+                                child_ctx = root_ctx
+                                for part in modified_root:
+                                    child_ctx = child_ctx.get_child_context(part)
+                            else:
+                                child_ctx = dict_context.get_child_context(grandchild_name)
+                                
+                            # child_ctx = dict_context.get_child_context(key) if dict_context is not None else None                            
+                            recursive_apply_materialization_context(grandchild, child_ctx)
 
-                    elif isinstance(module, torch.nn.ModuleList):
+                    elif isinstance(child_module, torch.nn.ModuleList):
                         iter_context = ctx.get_child_context(name)
-                        for i, value in enumerate(module):
+                        for i, value in enumerate(child_module):
                             list_index_name = f"{i}"
                             child_ctx = iter_context.get_child_context(list_index_name)
-                            recursive_apply_materialization_context(child_path, value, child_ctx)
+                            recursive_apply_materialization_context(value, child_ctx)
                 except Exception as e:
                     raise Exception(f"Error while applying materialization context to {child_path}: {e}")
 
 
         try:
-            recursive_apply_materialization_context([self.debug_name], self, MaterializationContext(["root"],individual.as_dict()))
+            recursive_apply_materialization_context(self, root_ctx)
             # Call forward again to materialize the model
             self.forward(*args, **kwargs)
         except Exception as e:
@@ -323,7 +372,9 @@ class HyperModel(torch.nn.Module):
     def build_searchspace(self, default_layer_searchspace = DefaultLayerSpace):
         """ Return a representation of the searchspace of the model """
         
-        def rec_merge_space(obj : HyperModel | Any, default_searchspace, path="") -> Optional[SearchSpace]:
+        rebased_searchspaces : Dict[str,SearchSpace] = {}
+        
+        def rec_merge_space(obj : HyperModel | Any, default_searchspace, path : List[str]) -> Optional[SearchSpace]:
             if not isinstance(obj, HyperModel): return None
 
             # Build the searchspace for this model
@@ -333,37 +384,62 @@ class HyperModel(torch.nn.Module):
             # Apply labels from the hypermodel (if applicable) to the searchspace
             if isinstance(obj, HyperModel):
                 searchspace.add_labels(*obj.labels)
-
+            
             # Recursively merge children
             for name, module in obj.named_children():
                 if isinstance(module, HyperModel):
-                    childss = rec_merge_space(module, default_searchspace, "{}/{}".format(path,name))
+                    childss = rec_merge_space(module, default_searchspace, path + [name])
                     if childss != None: 
                         searchspace.append_child(name, childss)
                 
                 elif isinstance(module, torch.nn.ModuleDict):
-                    dict_ss = SearchSpace(name)
+                    dict_ss = SearchSpace("ModuleDict")
                     for key, value in module.items():
-                        childss = rec_merge_space(value, default_searchspace, "{}/{}".format(path,name))
+                        childss = rec_merge_space(value, default_searchspace, path + [name])
                         if childss != None:
                             dict_ss.append_child(key, childss)
                             
                     searchspace.append_child(name, dict_ss)
 
                 elif isinstance(module, torch.nn.ModuleList):
-                    list_ss = SearchSpace(name)
+                    list_ss = SearchSpace("ModuleList")
                     for i, value in enumerate(module):
-                        childss = rec_merge_space(value, default_searchspace, "{}/{}".format(path,name))
+                        childss = rec_merge_space(value, default_searchspace, path + [name])
                         if childss != None:
                             list_ss.append_child(str(i), childss)
                         else:
                             list_ss.append_child(str(i), NoSpace("NoSpace"))
                     searchspace.append_child(name, list_ss)
+                    
+            if isinstance(obj, HyperModel) and obj.__rebase_searchspace_root is not None:
+                target_path = "/".join(resolve_path(path, obj.__rebase_searchspace_root))
+                if target_path in rebased_searchspaces and  rebased_searchspaces[target_path].deep_equals(searchspace) == False:
+                    raise Exception(f"Rebase path already exists: {target_path}, but the searchspaces are different: {rebased_searchspaces[target_path]} != {searchspace}")
+                # print(f"Rebasing {obj.debug_name} to {target_path}")
+                rebased_searchspaces[target_path] = searchspace
+                return None # Do not include this in the searchspace
 
             return searchspace
 
 
 
         # Build the searchspace from all underlying hyper models
-        return rec_merge_space(self, default_layer_searchspace)
+        final_searchspace = rec_merge_space(self, default_layer_searchspace, [])
+        
+        # Rebase the searchspaces
+        for rebased_key, rebased_ss in rebased_searchspaces.items():
+            rebased_path = [a for a in rebased_key.split("/") if a != ""]
+            current_path = final_searchspace
+            for part_idx, part_name in enumerate(rebased_path):
+                if part_idx == len(rebased_path) - 1:
+                    current_path.append_child(part_name, rebased_ss)
+                    break
+                
+                # keep going down the path
+                current_path = current_path.get(part_name)
+                if current_path is None: 
+                    raise Exception(f"Rebase path not found: {rebased_key} - {rebased_path[:part_idx]}")
+            
+        
+        return final_searchspace
     

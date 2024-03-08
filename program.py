@@ -5,6 +5,23 @@ import hypertorch2 as hypertorch
 from hypertorch2.nodelib import *
 from hypertorch2.searchspaceprimitives import *
 
+
+class MyLeafNode(hypertorch.HyperModel):
+    def __init__(self):
+        super(MyLeafNode, self).__init__(debug_name="MyLeafNode", labels=["test-leaf"], rebase_searchspace_root="../rebased-test-leaf")
+        self.layer = HyperLinear()
+        
+    def forward(self, x : torch.Tensor):
+        return self.layer(x)
+    
+class MyLeafNodeContainer(hypertorch.HyperModel):
+    def __init__(self):
+        super(MyLeafNodeContainer, self).__init__(debug_name="MyLeafNodeContainer", labels=["test-leaf-container"])
+        self.leaf_node = MyLeafNode()
+        
+    def forward(self, x : torch.Tensor):
+        return self.leaf_node(x)
+
 class MyTestModelSubModule(hypertorch.HyperModel):
     def __init__(self):
         super(MyTestModelSubModule, self).__init__(debug_name="MyTestModelSubModule", labels=["test-submodel"])
@@ -36,6 +53,15 @@ class MyTestModel(hypertorch.HyperModel):
             "elu" : torch.nn.ELU(),
             "relu" : torch.nn.ReLU(),
         }, default_key="elu")
+                
+        self.leaf_node_a = MyLeafNode()
+        self.leaf_container_a = MyLeafNodeContainer()
+        self.leaf_container_b = MyLeafNodeContainer()
+        
+        self.leaf_dict = nn.ModuleDict({
+            "dict_leaf_a" : MyLeafNode(),
+            "dict_leaf_b" : MyLeafNode()
+        })
         pass
 
     def forward(self, x : torch.Tensor, y : torch.Tensor):
@@ -48,6 +74,16 @@ class MyTestModel(hypertorch.HyperModel):
         y = self.hypersequential(y)
         y = self.activation_function(y)
         return y
+    
+    
+    def materializing_forward(self, ctx : MaterializationContext, x : torch.Tensor, y : torch.Tensor):
+        self.extra_stuff = ctx.individual["extra_stuff"]
+        return ctx.original_forward(x, y)
+    
+    def get_searchspace(self, default_space: Dict[str, Any]) -> SearchSpace | None:
+        return SearchSpace(self.__class__.__name__, {
+            "extra_stuff" : IntSpace(1, 100, default=50),
+        }) 
 
 
 inputs = [
@@ -61,9 +97,13 @@ extraspace = {
     "HyperLinear" : { "nodes" : hypertorch.searchspaceprimitives.IntSpace(1,350) }
 }
 searchspace = hyper_model.build_searchspace(default_layer_searchspace={**hypertorch.DefaultLayerSpace, **extraspace} )
-individual = searchspace.default_individual()
+# print("Searchspace:", searchspace)
 
-# # materialize and test the model
+individual = searchspace.default_individual()
+# print(individual)
+# exit(1)
+
+# # # materialize and test the model
 hyper_model.materialize(individual, inputs[0], inputs[1])
 
 prediction = hyper_model(inputs[0], inputs[1])

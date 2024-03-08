@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hypertorch"
-version = "0.2.5"
+version = "0.2.8"
 description = ""
 authors = ["Ronny Kaste <rkaste@gmail.com>"]
 readme = "README.md"
@@ -20,6 +20,7 @@ torch = "^2.2.0"
 numpy = "^1.26.3"
 pendulum = "^3.0.0"
 toolz = "^0.12.1"
+ipykernel = "^6.29.3"
 
 [build-system]
 requires = ["poetry-core"]
